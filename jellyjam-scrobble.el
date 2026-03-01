@@ -15,11 +15,6 @@
   "ListenBrainz scrobbling settings."
   :group 'jellyjam)
 
-(defcustom jellyjam-scrobble-enabled nil
-  "Whether to scrobble tracks to ListenBrainz."
-  :type 'boolean
-  :group 'jellyjam-scrobble)
-
 (defcustom jellyjam-listenbrainz-token nil
   "ListenBrainz user authentication token."
   :type '(choice (const nil) string)
@@ -39,12 +34,9 @@
 (defvar jellyjam--scrobbled-p nil
   "Whether current track has already been scrobbled.")
 
-(defvar jellyjam--scrobble-observer-registered nil
-  "Non-nil if time-pos observer has been registered for scrobbling.")
-
 (defun jellyjam--listenbrainz-submit (listen-type payload)
   "Submit PAYLOAD to ListenBrainz with LISTEN-TYPE."
-  (when (and jellyjam-scrobble-enabled jellyjam-listenbrainz-token)
+  (when (and jellyjam-scrobble-mode jellyjam-listenbrainz-token)
     (let ((url (concat jellyjam-listenbrainz-url "/1/submit-listens"))
           (body (json-serialize
                  `(:listen_type ,listen-type
@@ -98,7 +90,7 @@ If LISTENED-AT is provided, include it for scrobble submissions."
 
 (defun jellyjam--scrobble-check-condition (time-pos)
   "Check if scrobble condition is met at TIME-POS seconds."
-  (when (and jellyjam-scrobble-enabled
+  (when (and jellyjam-scrobble-mode
              time-pos
              jellyjam--current-track
              (not jellyjam--scrobbled-p))
@@ -117,7 +109,7 @@ If LISTENED-AT is provided, include it for scrobble submissions."
 (defun jellyjam--scrobble-on-start-file (track-id)
   "Handle file start for scrobbling.
 TRACK-ID is the Jellyfin item ID of the track."
-  (when jellyjam-scrobble-enabled
+  (when jellyjam-scrobble-mode
     (jellyjam--get (format "/Items/%s" track-id) nil
       (setq jellyjam--current-track response)
       (setq jellyjam--track-start-time (floor (float-time)))
@@ -132,14 +124,23 @@ TRACK-ID is the Jellyfin item ID of the track."
   (setq jellyjam--track-start-time nil)
   (setq jellyjam--scrobbled-p nil))
 
-(defun jellyjam-scrobble-setup ()
-  "Set up scrobbling hooks and observers."
-  (add-hook 'jellyjam-file-start-hook #'jellyjam--scrobble-on-start-file)
-  (add-hook 'jellyjam-file-end-hook #'jellyjam--scrobble-on-end-file)
-  (unless jellyjam--scrobble-observer-registered
-    (jellyjam-observe-property "time-pos" #'jellyjam--scrobble-check-condition)
-    (setq jellyjam--scrobble-observer-registered t))
-  (setq jellyjam-scrobble-enabled t))
+;;;###autoload
+(define-minor-mode jellyjam-scrobble-mode
+  "Global minor mode for scrobbling tracks to ListenBrainz."
+  :global t
+  :group 'jellyjam-scrobble
+  (if jellyjam-scrobble-mode
+      (progn
+        (unless jellyjam-listenbrainz-token
+          (warn "`jellyjam-scrobble-mode' enabled without `jellyjam-listenbrainz-token' set"))
+        (add-hook 'jellyjam-file-start-hook #'jellyjam--scrobble-on-start-file)
+        (add-hook 'jellyjam-file-end-hook #'jellyjam--scrobble-on-end-file)
+        (jellyjam-observe-property "time-pos" #'jellyjam--scrobble-check-condition))
+    (remove-hook 'jellyjam-file-start-hook #'jellyjam--scrobble-on-start-file)
+    (remove-hook 'jellyjam-file-end-hook #'jellyjam--scrobble-on-end-file)
+    (setq jellyjam--current-track nil
+          jellyjam--track-start-time nil
+          jellyjam--scrobbled-p nil)))
 
 (provide 'jellyjam-scrobble)
 
