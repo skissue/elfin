@@ -154,6 +154,17 @@ If PROPERTY is already being observed, FN is simply added to the callback list."
       (jellyjam--mpv-send "observe_property" id property)))
   (cl-pushnew fn (cdr (assoc property jellyjam--property-callbacks))))
 
+(defun jellyjam-unobserve-property (property fn)
+  "Remove FN from observers of PROPERTY.
+If no observers remain, unregister the property from mpv."
+  (when-let* ((cb-entry (assoc property jellyjam--property-callbacks)))
+    (cl-callf2 delq fn (cdr cb-entry))
+    (unless (cdr cb-entry)
+      (cl-callf2 assoc-delete-all property jellyjam--property-callbacks)
+      (when-let* ((obs (rassoc property jellyjam--property-observers)))
+        (jellyjam--mpv-send "unobserve_property" (car obs))
+        (cl-callf2 delq obs jellyjam--property-observers)))))
+
 (defun jellyjam--add-event-handler (event-name fn)
   "Add FN as a handler for EVENT-NAME events from mpv.
 FN receives the full event hash table as its single argument."
