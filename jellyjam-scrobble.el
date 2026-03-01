@@ -134,6 +134,7 @@ If LISTENED-AT is provided, include it for scrobble submissions."
 (defun jellyjam-scrobble-setup ()
   "Set up scrobbling hooks and observers."
   (add-hook 'jellyjam-event-start-file-functions #'jellyjam--scrobble-on-start-file)
+  (jellyjam-add-observer "playlist-playing-pos" #'jellyjam--scrobble-on-start-file)
   (add-hook 'jellyjam-event-end-file-functions #'jellyjam--scrobble-on-end-file)
   (unless jellyjam--scrobble-observer-registered
     (jellyjam-add-observer "time-pos" #'jellyjam--scrobble-check-condition)

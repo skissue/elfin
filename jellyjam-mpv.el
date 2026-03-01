@@ -20,6 +20,12 @@
 (defvar jellyjam--observer-counter 0
   "Counter for generating unique observer IDs.")
 
+(defvar jellyjam--property-callbacks nil
+  "Alist of (property . (list of fns)) for property change callbacks.")
+
+(defvar jellyjam--event-callbacks nil
+  "Alist of (event-name . (list of fns)) for event callbacks.")
+
 (defvar jellyjam--ipc-process nil
   "Persistent IPC connection to mpv.")
 
@@ -29,6 +35,13 @@
 (defvar jellyjam--pending-response nil
   "Storage for synchronous command responses.")
 
+(defun jellyjam--normalize-value (value)
+  "Normalize mpv VALUE: :null and :false to nil, :true to t."
+  (pcase value
+    ((or :null :false) nil)
+    (:true t)
+    (_ value)))
+
 (defun jellyjam--ipc-filter (_proc output)
   "Process OUTPUT from mpv IPC, parsing JSON lines and dispatching events."
   (setq jellyjam--ipc-buffer (concat jellyjam--ipc-buffer output))
@@ -37,25 +50,33 @@
         (setq jellyjam--ipc-buffer "")
       (setq jellyjam--ipc-buffer (car (last lines)))
       (setq lines (butlast lines)))
-    (dolist (line lines)
-      (when-let* ((json (ignore-errors (json-parse-string line))))
-        (if (gethash "event" json)
-            (jellyjam--dispatch-event json)
-          (setq jellyjam--pending-response json))))))
-
-(defun jellyjam--dispatch-event (event)
-  "Dispatch EVENT to appropriate handlers via hooks."
-  (let ((event-name (gethash "event" event)))
-    (if (string= event-name "property-change")
-        (when-let* ((id (gethash "id" event))
-                    (entry (assq id jellyjam--property-observers))
-                    (property (cdr entry))
-                    (hook-sym (intern (format "jellyjam-property-%s-functions" property))))
-          (when (boundp hook-sym)
-            (run-hook-with-args hook-sym (gethash "data" event))))
-      (let ((hook-sym (intern (format "jellyjam-event-%s-functions" event-name))))
-        (when (boundp hook-sym)
-          (run-hook-with-args hook-sym event))))))
+    (let (property-changes events)
+      (cl-loop for line in lines
+               for json = (ignore-errors (json-parse-string line))
+               when json do
+               (let ((event-name (gethash "event" json)))
+                 (cond
+                  ((not event-name)
+                   (setq jellyjam--pending-response json))
+                  ((string= event-name "property-change")
+                   (push json property-changes))
+                  (t
+                   (push json events)))))
+      (cl-loop for change in (nreverse property-changes)
+               for id = (gethash "id" change)
+               for entry = (and id (assq id jellyjam--property-observers))
+               for property = (and entry (cdr entry))
+               for cb-entry = (and property (assoc property jellyjam--property-callbacks))
+               when cb-entry do
+               (let ((value (jellyjam--normalize-value (gethash "data" change))))
+                 (dolist (fn (cdr cb-entry))
+                   (funcall fn value))))
+      (cl-loop for event in (nreverse events)
+               for event-name = (gethash "event" event)
+               for cb-entry = (assoc event-name jellyjam--event-callbacks)
+               when cb-entry do
+               (dolist (fn (cdr cb-entry))
+                 (funcall fn event))))))
 
 (defun jellyjam--reregister-observers ()
   "Re-register all property observers after reconnect."
@@ -120,17 +141,25 @@ Returns the parsed JSON response synchronously."
                        (setq jellyjam--ipc-process nil))))
     (jellyjam--reregister-observers)))
 
-(defun jellyjam-add-observer (property fn)
+(defun jellyjam-observe-property (property fn)
   "Observe PROPERTY changes, calling FN with the new value.
 FN receives the new property value as its single argument.
-If PROPERTY is already being observed, FN is simply added to the hook."
+Values are normalized: :null and :false become nil, :true becomes t.
+If PROPERTY is already being observed, FN is simply added to the callback list."
   (jellyjam--ensure-ipc)
-  (let ((hook-sym (intern (format "jellyjam-property-%s-functions" property))))
-    (unless (rassoc property jellyjam--property-observers)
-      (let ((id (cl-incf jellyjam--observer-counter)))
-        (push (cons id property) jellyjam--property-observers)
-        (jellyjam--mpv-send "observe_property" id property)))
-    (add-hook hook-sym fn)))
+  (unless (assoc property jellyjam--property-callbacks)
+    (push (list property) jellyjam--property-callbacks)
+    (let ((id (cl-incf jellyjam--observer-counter)))
+      (push (cons id property) jellyjam--property-observers)
+      (jellyjam--mpv-send "observe_property" id property)))
+  (cl-pushnew fn (cdr (assoc property jellyjam--property-callbacks))))
+
+(defun jellyjam--add-event-handler (event-name fn)
+  "Add FN as a handler for EVENT-NAME events from mpv.
+FN receives the full event hash table as its single argument."
+  (unless (assoc event-name jellyjam--event-callbacks)
+    (push (list event-name) jellyjam--event-callbacks))
+  (cl-pushnew fn (cdr (assoc event-name jellyjam--event-callbacks))))
 
 (defun jellyjam-kill ()
   "Kill the mpv process."

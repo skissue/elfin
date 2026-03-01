@@ -15,18 +15,24 @@
 (defvar jellyjam--queue-pos nil
   "Current position in queue (0-indexed), or nil if empty.")
 
-(defvar jellyjam--queue-observer-registered nil
-  "Non-nil if playlist-playing-pos observer has been registered.")
+(defvar jellyjam--current-track-id nil
+  "ID of the currently playing track, set on file-start.")
 
-(defun jellyjam--queue-position-changed (pos)
-  "Handle playlist position change to POS from mpv."
-  (setq jellyjam--queue-pos pos))
+(defvar jellyjam-file-start-hook nil
+  "Hook run when a new file starts playing.
+Each function receives the track ID as its single argument.")
 
-(defun jellyjam--ensure-queue-observer ()
-  "Ensure the queue position observer is registered."
-  (unless jellyjam--queue-observer-registered
-    (jellyjam-add-observer "playlist-playing-pos" #'jellyjam--queue-position-changed)
-    (setq jellyjam--queue-observer-registered t)))
+(defvar jellyjam-file-end-hook nil
+  "Hook run when a file finishes playing.
+Each function receives the track ID and reason as arguments.")
+
+(defvar jellyjam-pause-hook nil
+  "Hook run when pause state changes.
+Each function receives non-nil if paused, nil if playing.")
+
+(defvar jellyjam-idle-hook nil
+  "Hook run when mpv enters idle state.
+Functions receive no arguments.")
 
 (defun jellyjam-current-track ()
   "Return the ID of the currently playing track, or nil."
@@ -50,7 +56,6 @@
 (defun jellyjam-play-track (id &optional silent)
   "Play track ID with mpv.
 Show a message notifying the user unless SILENT is non-nil."
-  (jellyjam--ensure-queue-observer)
   (setq jellyjam--queue (list id))
   (setq jellyjam--queue-pos 0)
   (jellyjam--mpv-send "loadfile" (jellyjam--audio-url id) "replace")
@@ -132,6 +137,31 @@ Show a message notifying the user unless SILENT is non-nil."
          (current (gethash "data" response)))
     (when current
       (jellyjam-volume-set (max 0 (- current jellyjam-volume-step))))))
+
+;; Wire up mpv events to hooks.
+(jellyjam-observe-property "playlist-playing-pos"
+                           (lambda (pos) (setq jellyjam--queue-pos pos)))
+
+(jellyjam--add-event-handler "start-file"
+                             (lambda (_event)
+                               (let ((id (jellyjam-current-track)))
+                                 (setq jellyjam--current-track-id id)
+                                 (run-hook-with-args 'jellyjam-file-start-hook id))))
+
+(jellyjam--add-event-handler "end-file"
+                             (lambda (event)
+                               (let ((id jellyjam--current-track-id)
+                                     (reason (gethash "reason" event)))
+                                 (run-hook-with-args 'jellyjam-file-end-hook id reason)
+                                 (setq jellyjam--current-track-id nil))))
+
+(jellyjam-observe-property "pause"
+                           (lambda (paused-p)
+                             (run-hook-with-args 'jellyjam-pause-hook paused-p)))
+
+(jellyjam--add-event-handler "idle"
+                             (lambda (_event)
+                               (run-hooks 'jellyjam-idle-hook)))
 
 (provide 'jellyjam-playback)
 
