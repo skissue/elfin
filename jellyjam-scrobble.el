@@ -99,6 +99,7 @@ If LISTENED-AT is provided, include it for scrobble submissions."
 (defun jellyjam--scrobble-check-condition (time-pos)
   "Check if scrobble condition is met at TIME-POS seconds."
   (when (and jellyjam-scrobble-enabled
+             time-pos
              jellyjam--current-track
              (not jellyjam--scrobbled-p))
     (let* ((runtime-ticks (gethash "RunTimeTicks" jellyjam--current-track))
