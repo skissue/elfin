@@ -138,6 +138,7 @@ TRACK-ID is the Jellyfin item ID of the track."
         (jellyjam-observe-property "time-pos" #'jellyjam--scrobble-check-condition))
     (remove-hook 'jellyjam-file-start-hook #'jellyjam--scrobble-on-start-file)
     (remove-hook 'jellyjam-file-end-hook #'jellyjam--scrobble-on-end-file)
+    (jellyjam-unobserve-property "time-pos" #'jellyjam--scrobble-check-condition)
     (setq jellyjam--current-track nil
           jellyjam--track-start-time nil
           jellyjam--scrobbled-p nil)))
