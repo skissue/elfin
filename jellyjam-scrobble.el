@@ -113,31 +113,30 @@ If LISTENED-AT is provided, include it for scrobble submissions."
          (jellyjam--build-listen-payload
           jellyjam--current-track jellyjam--track-start-time))))))
 
-(defun jellyjam--scrobble-on-start-file (_event)
-  "Handle start-file event for scrobbling."
+(defun jellyjam--scrobble-on-start-file (track-id)
+  "Handle file start for scrobbling.
+TRACK-ID is the Jellyfin item ID of the track."
   (when jellyjam-scrobble-enabled
-    (when-let ((track-id (jellyjam-current-track)))
-      (jellyjam--get (format "/Items/%s" track-id) nil
-        (setq jellyjam--current-track response)
-        (setq jellyjam--track-start-time (floor (float-time)))
-        (setq jellyjam--scrobbled-p nil)
-        (jellyjam--listenbrainz-submit
-         "playing_now"
-         (jellyjam--build-listen-payload response))))))
+    (jellyjam--get (format "/Items/%s" track-id) nil
+      (setq jellyjam--current-track response)
+      (setq jellyjam--track-start-time (floor (float-time)))
+      (setq jellyjam--scrobbled-p nil)
+      (jellyjam--listenbrainz-submit
+       "playing_now"
+       (jellyjam--build-listen-payload response)))))
 
-(defun jellyjam--scrobble-on-end-file (_event)
-  "Handle end-file event for scrobbling."
+(defun jellyjam--scrobble-on-end-file (_track-id _reason)
+  "Handle file end for scrobbling."
   (setq jellyjam--current-track nil)
   (setq jellyjam--track-start-time nil)
   (setq jellyjam--scrobbled-p nil))
 
 (defun jellyjam-scrobble-setup ()
   "Set up scrobbling hooks and observers."
-  (add-hook 'jellyjam-event-start-file-functions #'jellyjam--scrobble-on-start-file)
-  (jellyjam-add-observer "playlist-playing-pos" #'jellyjam--scrobble-on-start-file)
-  (add-hook 'jellyjam-event-end-file-functions #'jellyjam--scrobble-on-end-file)
+  (add-hook 'jellyjam-file-start-hook #'jellyjam--scrobble-on-start-file)
+  (add-hook 'jellyjam-file-end-hook #'jellyjam--scrobble-on-end-file)
   (unless jellyjam--scrobble-observer-registered
-    (jellyjam-add-observer "time-pos" #'jellyjam--scrobble-check-condition)
+    (jellyjam-observe-property "time-pos" #'jellyjam--scrobble-check-condition)
     (setq jellyjam--scrobble-observer-registered t))
   (setq jellyjam-scrobble-enabled t))
 
