@@ -58,8 +58,8 @@ Functions receive no arguments.")
 Show a message notifying the user unless SILENT is non-nil."
   (setq elfin--queue (list id))
   (setq elfin--queue-pos 0)
-  (elfin--mpv-send "loadfile" (elfin--audio-url id) "replace")
-  (elfin--mpv-send "set_property" "pause" :false)
+  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "replace"))
+  (elfin--mpv-send '("set_property" "pause" :false))
   (unless silent
     (message "Playing track")))
 
@@ -67,7 +67,7 @@ Show a message notifying the user unless SILENT is non-nil."
   "Add track ID to mpv playlist.
 Show a message notifying the user unless SILENT is non-nil."
   (setq elfin--queue (append elfin--queue (list id)))
-  (elfin--mpv-send "loadfile" (elfin--audio-url id) "append")
+  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "append"))
   (unless silent
     (message "Queued track")))
 
@@ -85,9 +85,9 @@ Show a message notifying the user unless SILENT is non-nil."
   (interactive)
   (setq elfin--queue nil)
   (setq elfin--queue-pos nil)
-  (elfin--mpv-send "playlist-clear")
+  (elfin--mpv-send '("playlist-clear"))
   ;; `playlist-clear' does not remove the current file.
-  (elfin--mpv-send "playlist-remove" "current")
+  (elfin--mpv-send '("playlist-remove" "current"))
   (unless silent
     (message "Cleared queue")))
 
@@ -109,34 +109,34 @@ Show a message notifying the user unless SILENT is non-nil."
   (interactive)
   (setq elfin--queue nil)
   (setq elfin--queue-pos nil)
-  (elfin--mpv-send "stop"))
+  (elfin--mpv-send '("stop")))
 
 (defun elfin-pause ()
   "Toggle Elfin pause state."
   (interactive)
-  (elfin--mpv-send "cycle" "pause"))
+  (elfin--mpv-send '("cycle" "pause")))
 
 (defun elfin-volume-set (volume)
   "Set Elfin volume to VOLUME (0-100)."
   (interactive "nVolume: ")
-  (elfin--mpv-send "set_property" "volume" volume)
+  (elfin--mpv-send `("set_property" "volume" ,volume))
   (message "Volume: %d" volume))
 
 (defun elfin-volume-up ()
   "Increase Elfin volume."
   (interactive)
-  (let* ((response (elfin--mpv-send "get_property" "volume"))
-         (current (gethash "data" response)))
-    (when current
-      (elfin-volume-set (min 100 (+ current elfin-volume-step))))))
+  (elfin--mpv-send '("get_property" "volume")
+                   (lambda (vol)
+                     (when vol
+                       (elfin-volume-set (min 100 (+ vol elfin-volume-step)))))))
 
 (defun elfin-volume-down ()
   "Decrease Elfin volume."
   (interactive)
-  (let* ((response (elfin--mpv-send "get_property" "volume"))
-         (current (gethash "data" response)))
-    (when current
-      (elfin-volume-set (max 0 (- current elfin-volume-step))))))
+  (elfin--mpv-send '("get_property" "volume")
+                   (lambda (vol)
+                     (when vol
+                       (elfin-volume-set (max 0 (- vol elfin-volume-step)))))))
 
 ;; Wire up mpv events to hooks.
 (elfin-observe-property "playlist-playing-pos"

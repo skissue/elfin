@@ -32,8 +32,11 @@
 (defvar elfin--ipc-buffer ""
   "Buffer for accumulating incomplete IPC output.")
 
-(defvar elfin--pending-response nil
-  "Storage for synchronous command responses.")
+(defvar elfin--request-counter 1
+  "Counter for generating unique request IDs.")
+
+(defvar elfin--response-handlers nil
+  "Alist of (request-id . handler-fn) for pending command responses.")
 
 (defun elfin--ipc-log (direction string)
   "When `elfin-debug' is non-nil, log STRING with DIRECTION tag to *Elfin IPC Log*."
@@ -51,6 +54,18 @@
     (:true t)
     (_ value)))
 
+(defun elfin--handle-command-response (json)
+  "Dispatch JSON command response to its registered handler, if any.
+Handlers are one-shot and removed after being called."
+  (let ((request-id (gethash "request_id" json 0)))
+    (unless (zerop request-id)
+      (if-let* ((entry (assq request-id elfin--response-handlers)))
+          (progn
+            (funcall (cdr entry) (elfin--normalize-value (gethash "data" json)))
+            (setq elfin--response-handlers
+                  (assq-delete-all request-id elfin--response-handlers)))
+        (warn "elfin: unexpected response for request_id %d" request-id)))))
+
 (defun elfin--ipc-filter (_proc output)
   "Process OUTPUT from mpv IPC, parsing JSON lines and dispatching events."
   (elfin--ipc-log "IN" output)
@@ -67,7 +82,7 @@
                (let ((event-name (gethash "event" json)))
                  (cond
                   ((not event-name)
-                   (setq elfin--pending-response json))
+                   (elfin--handle-command-response json))
                   ((string= event-name "property-change")
                    (push json property-changes))
                   (t
@@ -91,7 +106,7 @@
 (defun elfin--reregister-observers ()
   "Re-register all property observers after reconnect."
   (dolist (entry elfin--property-observers)
-    (elfin--mpv-send "observe_property" (car entry) (cdr entry))))
+    (elfin--mpv-send `("observe_property" ,(car entry) ,(cdr entry)))))
 
 (defun elfin--mpv-command ()
   "Format and return command to start mpv process."
@@ -121,19 +136,19 @@ Return non-nil if there was an error."
       (unless (file-exists-p elfin--mpv-socket)
         (error "Failed to start mpv")))))
 
-(defun elfin--mpv-send (&rest args)
-  "Send ARGS to mpv via persistent IPC connection.
-Returns the parsed JSON response synchronously."
+(defun elfin--mpv-send (args &optional handler)
+  "Send ARGS (a list) to mpv via persistent IPC connection.
+When HANDLER is non-nil, register it as a one-shot callback that
+receives the normalized data field of the response."
   (elfin--ensure-ipc)
-  (setq elfin--pending-response nil)
-  (let ((json (concat (json-serialize `(:command ,(apply #'vector args))) "\n")))
+  (let* ((request-id (when handler (cl-incf elfin--request-counter)))
+         (msg `(:command ,(apply #'vector args)
+                         ,@(when request-id `(:request_id ,request-id))))
+         (json (concat (json-serialize msg) "\n")))
+    (when request-id
+      (push (cons request-id handler) elfin--response-handlers))
     (elfin--ipc-log "OUT" json)
-    (process-send-string elfin--ipc-process json)
-    (let ((tries 100))
-      (while (and (> tries 0) (null elfin--pending-response))
-        (accept-process-output elfin--ipc-process 0.01)
-        (cl-decf tries)))
-    elfin--pending-response))
+    (process-send-string elfin--ipc-process json)))
 
 (defun elfin--ensure-ipc ()
   "Ensure persistent IPC connection to mpv exists."
@@ -141,6 +156,8 @@ Returns the parsed JSON response synchronously."
                (process-live-p elfin--ipc-process))
     (elfin--ensure-mpv)
     (setq elfin--ipc-buffer "")
+    (setq elfin--request-counter 1)
+    (setq elfin--response-handlers nil)
     (setq elfin--ipc-process
           (make-network-process
            :name "elfin-ipc"
@@ -162,7 +179,7 @@ If PROPERTY is already being observed, FN is simply added to the callback list."
     (push (list property) elfin--property-callbacks)
     (let ((id (cl-incf elfin--observer-counter)))
       (push (cons id property) elfin--property-observers)
-      (elfin--mpv-send "observe_property" id property)))
+      (elfin--mpv-send `("observe_property" ,id ,property))))
   (cl-pushnew fn (cdr (assoc property elfin--property-callbacks))))
 
 (defun elfin-unobserve-property (property fn)
@@ -173,7 +190,7 @@ If no observers remain, unregister the property from mpv."
     (unless (cdr cb-entry)
       (cl-callf2 assoc-delete-all property elfin--property-callbacks)
       (when-let* ((obs (rassoc property elfin--property-observers)))
-        (elfin--mpv-send "unobserve_property" (car obs))
+        (elfin--mpv-send `("unobserve_property" ,(car obs)))
         (cl-callf2 delq obs elfin--property-observers)))))
 
 (defun elfin--add-event-handler (event-name fn)
