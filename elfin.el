@@ -40,6 +40,11 @@
   :group 'multimedia
   :prefix "elfin-")
 
+(defcustom elfin-debug nil
+  "When non-nil, enable verbose debug logging for various functionality."
+  :type 'boolean
+  :group 'elfin)
+
 (provide 'elfin)
 
 ;;; elfin.el ends here

@@ -35,6 +35,15 @@
 (defvar elfin--pending-response nil
   "Storage for synchronous command responses.")
 
+(defun elfin--ipc-log (direction string)
+  "When `elfin-debug' is non-nil, log STRING with DIRECTION tag to *Elfin IPC Log*."
+  (when elfin-debug
+    (with-current-buffer (get-buffer-create "*Elfin IPC Log*")
+      (save-excursion
+        (goto-char (point-max))
+        (insert (format-time-string "[%T] ")
+                direction ": " string)))))
+
 (defun elfin--normalize-value (value)
   "Normalize mpv VALUE: :null and :false to nil, :true to t."
   (pcase value
@@ -44,6 +53,7 @@
 
 (defun elfin--ipc-filter (_proc output)
   "Process OUTPUT from mpv IPC, parsing JSON lines and dispatching events."
+  (elfin--ipc-log "IN" output)
   (setq elfin--ipc-buffer (concat elfin--ipc-buffer output))
   (let ((lines (split-string elfin--ipc-buffer "\n" t)))
     (if (string-suffix-p "\n" output)
@@ -117,6 +127,7 @@ Returns the parsed JSON response synchronously."
   (elfin--ensure-ipc)
   (setq elfin--pending-response nil)
   (let ((json (concat (json-serialize `(:command ,(apply #'vector args))) "\n")))
+    (elfin--ipc-log "OUT" json)
     (process-send-string elfin--ipc-process json)
     (let ((tries 100))
       (while (and (> tries 0) (null elfin--pending-response))
