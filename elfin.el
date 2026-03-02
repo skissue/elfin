@@ -1,10 +1,10 @@
-;;; jellyjam.el --- Jellyfin music player -*- lexical-binding: t -*-
+;;; elfin.el --- Jellyfin music player -*- lexical-binding: t -*-
 
 ;; Author: Ad <me@skissue.xyz>
 ;; Maintainer: Ad <me@skissue.xyz>
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "26.1") (plz "0.9.1"))
-;; Homepage: https://github.com/skissue/jellyjam.el
+;; Homepage: https://github.com/skissue/elfin.el
 ;; Keywords: multimedia
 
 
@@ -30,16 +30,16 @@
 
 ;;; Code:
 
-(require 'jellyjam-api)
-(require 'jellyjam-view)
-(require 'jellyjam-mpv)
-(require 'jellyjam-playback)
+(require 'elfin-api)
+(require 'elfin-view)
+(require 'elfin-mpv)
+(require 'elfin-playback)
 
-(defgroup jellyjam nil
+(defgroup elfin nil
   "Jellyfin music client and player."
   :group 'multimedia
-  :prefix "jellyjam-")
+  :prefix "elfin-")
 
-(provide 'jellyjam)
+(provide 'elfin)
 
-;;; jellyjam.el ends here
+;;; elfin.el ends here
