@@ -15,8 +15,11 @@
 (defvar elfin--queue-pos nil
   "Current position in queue (0-indexed), or nil if empty.")
 
-(defvar elfin--current-track-id nil
+(defvar elfin-current-track-id nil
   "ID of the currently playing track, set on file-start.")
+
+(defvar elfin--entry-map (make-hash-table :test 'eql)
+  "Hash table mapping mpv playlist_entry_id to Jellyfin track ID.")
 
 (defvar elfin-file-start-hook nil
   "Hook run when a new file starts playing.
@@ -33,11 +36,6 @@ Each function receives non-nil if paused, nil if playing.")
 (defvar elfin-idle-hook nil
   "Hook run when mpv enters idle state.
 Functions receive no arguments.")
-
-(defun elfin-current-track ()
-  "Return the ID of the currently playing track, or nil."
-  (when (and elfin--queue elfin--queue-pos)
-    (nth elfin--queue-pos elfin--queue)))
 
 (defun elfin-queue-length ()
   "Return the number of tracks in the queue."
@@ -58,7 +56,11 @@ Functions receive no arguments.")
 Show a message notifying the user unless SILENT is non-nil."
   (setq elfin--queue (list id))
   (setq elfin--queue-pos 0)
-  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "replace"))
+  (clrhash elfin--entry-map)
+  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "replace")
+                   (lambda (response)
+                     (puthash (gethash "playlist_entry_id" response) id
+                              elfin--entry-map)))
   (elfin--mpv-send '("set_property" "pause" :false))
   (unless silent
     (message "Playing track")))
@@ -67,7 +69,10 @@ Show a message notifying the user unless SILENT is non-nil."
   "Add track ID to mpv playlist.
 Show a message notifying the user unless SILENT is non-nil."
   (setq elfin--queue (append elfin--queue (list id)))
-  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "append"))
+  (elfin--mpv-send `("loadfile" ,(elfin--audio-url id) "append")
+                   (lambda (response)
+                     (puthash (gethash "playlist_entry_id" response) id
+                              elfin--entry-map)))
   (unless silent
     (message "Queued track")))
 
@@ -85,6 +90,7 @@ Show a message notifying the user unless SILENT is non-nil."
   (interactive)
   (setq elfin--queue nil)
   (setq elfin--queue-pos nil)
+  (clrhash elfin--entry-map)
   (elfin--mpv-send '("playlist-clear"))
   ;; `playlist-clear' does not remove the current file.
   (elfin--mpv-send '("playlist-remove" "current"))
@@ -109,6 +115,7 @@ Show a message notifying the user unless SILENT is non-nil."
   (interactive)
   (setq elfin--queue nil)
   (setq elfin--queue-pos nil)
+  (clrhash elfin--entry-map)
   (elfin--mpv-send '("stop")))
 
 (defun elfin-pause ()
@@ -143,17 +150,22 @@ Show a message notifying the user unless SILENT is non-nil."
                            (lambda (pos) (setq elfin--queue-pos pos)))
 
 (elfin--add-event-handler "start-file"
-                             (lambda (_event)
-                               (let ((id (elfin-current-track)))
-                                 (setq elfin--current-track-id id)
-                                 (run-hook-with-args 'elfin-file-start-hook id))))
+                              (lambda (event)
+                                (let* ((entry-id (gethash "playlist_entry_id" event))
+                                       (id (and entry-id (gethash entry-id elfin--entry-map))))
+                                  (setq elfin-current-track-id id)
+                                  (run-hook-with-args 'elfin-file-start-hook id))))
 
 (elfin--add-event-handler "end-file"
-                             (lambda (event)
-                               (let ((id elfin--current-track-id)
-                                     (reason (gethash "reason" event)))
-                                 (run-hook-with-args 'elfin-file-end-hook id reason)
-                                 (setq elfin--current-track-id nil))))
+                              (lambda (event)
+                                (let* ((entry-id (gethash "playlist_entry_id" event))
+                                       (id (or (and entry-id (gethash entry-id elfin--entry-map))
+                                               elfin-current-track-id))
+                                       (reason (gethash "reason" event)))
+                                  (run-hook-with-args 'elfin-file-end-hook id reason)
+                                  (when entry-id
+                                    (remhash entry-id elfin--entry-map))
+                                  (setq elfin-current-track-id nil))))
 
 (elfin-observe-property "pause"
                            (lambda (paused-p)
