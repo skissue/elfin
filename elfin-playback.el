@@ -123,6 +123,24 @@ Show a message notifying the user unless SILENT is non-nil."
   (interactive)
   (elfin--mpv-send '("cycle" "pause")))
 
+(defun elfin-loop-playlist ()
+  "Toggle playlist looping."
+  (interactive)
+  (elfin--mpv-send '("get_property" "loop-playlist")
+                   (lambda (val)
+                     (let ((new (if (equal val "inf") "no" "inf")))
+                       (elfin--mpv-send `("set_property" "loop-playlist" ,new))
+                       (message "Playlist loop: %s" new)))))
+
+(defun elfin-loop-track ()
+  "Toggle track looping."
+  (interactive)
+  (elfin--mpv-send '("get_property" "loop-file")
+                   (lambda (val)
+                     (let ((new (if (equal val "inf") "no" "inf")))
+                       (elfin--mpv-send `("set_property" "loop-file" ,new))
+                       (message "Track loop: %s" new)))))
+
 (defun elfin-volume-set (volume)
   "Set Elfin volume to VOLUME (0-100)."
   (interactive "nVolume: ")
