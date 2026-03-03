@@ -30,11 +30,6 @@
 
 ;;; Code:
 
-(require 'elfin-api)
-(require 'elfin-view)
-(require 'elfin-mpv)
-(require 'elfin-playback)
-
 (defgroup elfin nil
   "Jellyfin music client and player."
   :group 'multimedia
@@ -44,6 +39,11 @@
   "When non-nil, enable verbose debug logging for various functionality."
   :type 'boolean
   :group 'elfin)
+
+(require 'elfin-api)
+(require 'elfin-view)
+(require 'elfin-mpv)
+(require 'elfin-playback)
 
 (provide 'elfin)
 
