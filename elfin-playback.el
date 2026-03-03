@@ -146,34 +146,41 @@ Show a message notifying the user unless SILENT is non-nil."
                        (elfin-volume-set (max 0 (- vol elfin-volume-step)))))))
 
 ;; Wire up mpv events to hooks.
-(elfin-observe-property "playlist-playing-pos"
-                           (lambda (pos) (setq elfin--queue-pos pos)))
+(defun elfin--handle-playlist-pos (pos)
+  "Update queue position to POS."
+  (setq elfin--queue-pos pos))
 
-(elfin--add-event-handler "start-file"
-                              (lambda (event)
-                                (let* ((entry-id (gethash "playlist_entry_id" event))
-                                       (id (and entry-id (gethash entry-id elfin--entry-map))))
-                                  (setq elfin-current-track-id id)
-                                  (run-hook-with-args 'elfin-file-start-hook id))))
+(defun elfin--handle-start-file (event)
+  "Handle mpv start-file EVENT."
+  (let* ((entry-id (gethash "playlist_entry_id" event))
+         (id (and entry-id (gethash entry-id elfin--entry-map))))
+    (setq elfin-current-track-id id)
+    (run-hook-with-args 'elfin-file-start-hook id)))
 
-(elfin--add-event-handler "end-file"
-                              (lambda (event)
-                                (let* ((entry-id (gethash "playlist_entry_id" event))
-                                       (id (or (and entry-id (gethash entry-id elfin--entry-map))
-                                               elfin-current-track-id))
-                                       (reason (gethash "reason" event)))
-                                  (run-hook-with-args 'elfin-file-end-hook id reason)
-                                  (when entry-id
-                                    (remhash entry-id elfin--entry-map))
-                                  (setq elfin-current-track-id nil))))
+(defun elfin--handle-end-file (event)
+  "Handle mpv end-file EVENT."
+  (let* ((entry-id (gethash "playlist_entry_id" event))
+         (id (or (and entry-id (gethash entry-id elfin--entry-map))
+                 elfin-current-track-id))
+         (reason (gethash "reason" event)))
+    (run-hook-with-args 'elfin-file-end-hook id reason)
+    (when entry-id
+      (remhash entry-id elfin--entry-map))
+    (setq elfin-current-track-id nil)))
 
-(elfin-observe-property "pause"
-                           (lambda (paused-p)
-                             (run-hook-with-args 'elfin-pause-hook paused-p)))
+(defun elfin--handle-pause (paused-p)
+  "Handle mpv pause property change to PAUSED-P."
+  (run-hook-with-args 'elfin-pause-hook paused-p))
 
-(elfin--add-event-handler "idle"
-                             (lambda (_event)
-                               (run-hooks 'elfin-idle-hook)))
+(defun elfin--handle-idle (_event)
+  "Handle mpv idle EVENT."
+  (run-hooks 'elfin-idle-hook))
+
+(elfin-observe-property "playlist-playing-pos" #'elfin--handle-playlist-pos)
+(elfin--add-event-handler "start-file" #'elfin--handle-start-file)
+(elfin--add-event-handler "end-file" #'elfin--handle-end-file)
+(elfin-observe-property "pause" #'elfin--handle-pause)
+(elfin--add-event-handler "idle" #'elfin--handle-idle)
 
 (provide 'elfin-playback)
 
