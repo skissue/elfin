@@ -25,6 +25,15 @@ Each session is a plist with :server, :user-id, :access-token,
 (defvar elfin--active-session nil
   "Plist containing the currently active session info.")
 
+(defun elfin--api-log (string)
+  "When `elfin-debug' is non-nil, log STRING to *Elfin API Log*."
+  (when elfin-debug
+    (with-current-buffer (get-buffer-create "*Elfin API Log*")
+      (save-excursion
+        (goto-char (point-max))
+        (insert (format-time-string "[%T] ")
+                string "\n")))))
+
 (defun elfin--auth-header (&optional token)
   "Generate the X-Emby-Authorization header value.
 If TOKEN is provided, include it in the header."
@@ -70,8 +79,12 @@ response data bound to `response'."
        (plz 'get url
          :headers `(("Authorization" . ,(elfin--auth-header token)))
          :as #'json-parse-buffer
-         :then (lambda (response) ,@then)
-         :else (lambda (err) (message "Request failed: %S" err))))))
+         :then (lambda (response)
+                 (elfin--api-log (format "GET %s -> %S" url response))
+                 ,@then)
+         :else (lambda (err)
+                 (elfin--api-log (format "GET %s -> ERROR %S" url err))
+                 (message "Request failed: %S" err))))))
 
 (defun elfin-authenticate (server user pass)
   "Authenticate with Jellyfin SERVER using USER and PASS.
