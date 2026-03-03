@@ -145,8 +145,8 @@ BODY is evaluated with `ids' bound to the list of item IDs.
 Shows a message if no items are found."
   (declare (indent 2))
   `(elfin--get "/Items" `(:parentId ,,parent-id
-                                       :includeItemTypes "Audio"
-                                       :Recursive t)
+                                    :includeItemTypes "Audio"
+                                    :Recursive t)
      (let ((ids (seq-map (lambda (item) (gethash "Id" item))
                          (gethash "Items" response))))
        (if (null ids)
