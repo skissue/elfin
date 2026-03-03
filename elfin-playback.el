@@ -190,6 +190,10 @@ Show a message notifying the user unless SILENT is non-nil."
   "Handle mpv pause property change to PAUSED-P."
   (run-hook-with-args 'elfin-pause-hook paused-p))
 
+(defun elfin--handle-playback-restart (_event)
+  "Handle mpv playback-restart EVENT."
+  (run-hook-with-args 'elfin-file-start-hook elfin-current-track-id))
+
 (defun elfin--handle-idle (_event)
   "Handle mpv idle EVENT."
   (run-hooks 'elfin-idle-hook))
@@ -198,6 +202,7 @@ Show a message notifying the user unless SILENT is non-nil."
 (elfin--add-event-handler "start-file" #'elfin--handle-start-file)
 (elfin--add-event-handler "end-file" #'elfin--handle-end-file)
 (elfin-observe-property "pause" #'elfin--handle-pause)
+(elfin--add-event-handler "playback-restart" #'elfin--handle-playback-restart)
 (elfin--add-event-handler "idle" #'elfin--handle-idle)
 
 (provide 'elfin-playback)
