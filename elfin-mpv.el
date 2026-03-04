@@ -110,10 +110,12 @@ Handlers are one-shot and removed after being called."
 
 (defun elfin--mpv-command ()
   "Format and return command to start mpv process."
-  (list "mpv" "--no-video" "--idle"
-        "--quiet" "--msg-color=no" "--term-osd=no"
-        (format "--input-ipc-server=%s" elfin--mpv-socket)
-        (format "--volume=%d" elfin-default-volume)))
+  `("mpv" "--no-video" "--idle"
+    "--quiet" "--msg-color=no" "--term-osd=no"
+    ,(format "--input-ipc-server=%s" elfin--mpv-socket)
+    ,(format "--volume=%d" elfin-default-volume)
+    ,@(when elfin-replaygain
+        (list (format "--replaygain=%s" elfin-replaygain)))))
 
 (defun elfin--ensure-mpv ()
   "Ensure mpv is running.

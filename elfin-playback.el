@@ -41,6 +41,14 @@ Functions receive no arguments.")
   "Return the number of tracks in the queue."
   (length elfin--queue))
 
+(defcustom elfin-replaygain nil
+  "ReplayGain mode passed to mpv.
+nil means disabled, `track' normalizes per-track, `album' normalizes per-album."
+  :type '(choice (const :tag "Disabled" nil)
+                 (const :tag "Track" track)
+                 (const :tag "Album" album))
+  :group 'elfin)
+
 (defcustom elfin-default-volume 100
   "Default volume passed to mpv (0-100)."
   :type 'integer
