@@ -182,8 +182,6 @@ Show a message notifying the user unless SILENT is non-nil."
                  elfin-current-track-id))
          (reason (gethash "reason" event)))
     (run-hook-with-args 'elfin-file-end-hook id reason)
-    (when entry-id
-      (remhash entry-id elfin--entry-map))
     (setq elfin-current-track-id nil)))
 
 (defun elfin--handle-pause (paused-p)
