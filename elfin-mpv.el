@@ -8,6 +8,10 @@
 
 (require 'cl-lib)
 
+(defcustom elfin-mpv-extra-options nil
+  "List of extra options to pass to the mpv process."
+  :type '(repeat string))
+
 (defconst elfin--mpv-socket "/tmp/elfin-mpv.sock"
   "Path to mpv IPC socket.")
 
@@ -115,7 +119,8 @@ Handlers are one-shot and removed after being called."
     ,(format "--input-ipc-server=%s" elfin--mpv-socket)
     ,(format "--volume=%d" elfin-default-volume)
     ,@(when elfin-replaygain
-        (list (format "--replaygain=%s" elfin-replaygain)))))
+        (list (format "--replaygain=%s" elfin-replaygain)))
+    ,@elfin-mpv-extra-options))
 
 (defun elfin--ensure-mpv ()
   "Ensure mpv is running.
