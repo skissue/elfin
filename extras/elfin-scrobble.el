@@ -7,9 +7,7 @@
 ;;; Code:
 
 (require 'plz)
-(require 'elfin-api)
-(require 'elfin-mpv)
-(require 'elfin-playback)
+(require 'elfin)
 
 (defgroup elfin-scrobble nil
   "ListenBrainz scrobbling settings."
