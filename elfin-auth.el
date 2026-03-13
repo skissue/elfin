@@ -90,6 +90,49 @@ provided for non-interactive use."
         (elfin-auth--do-authenticate server user pass))
       :else (message "Could not reach server %s: %S" server err))))
 
+(defun elfin-auth--qc-poll (server secret code)
+  "Poll Quick Connect status for SECRET on SERVER.
+CODE is the user-facing code shown in messages."
+  (message "Checking Quick Connect code...")
+  (elfin-auth--get server "/QuickConnect/Connect" `(:secret ,secret)
+    (if (eq (gethash "Authenticated" response) t)
+        (elfin-auth--qc-finish server secret)
+      (read-string
+       (format "Not yet approved (code: %s). Press enter to recheck: " code))
+      (elfin-auth--qc-poll server secret code))
+    :else (message "Quick Connect polling failed: %S" err)))
+
+(defun elfin-auth--qc-finish (server secret)
+  "Exchange Quick Connect SECRET for a session token on SERVER."
+  (elfin-auth--post server "/Users/AuthenticateWithQuickConnect"
+    `(:Secret ,secret)
+    (let* ((access-token (gethash "AccessToken" response))
+           (user-data (gethash "User" response))
+           (user-id (gethash "Id" user-data))
+           (username (gethash "Name" user-data))
+           (session `(:server ,(string-remove-suffix "/" server)
+                              :user-id ,user-id
+                              :access-token ,access-token
+                              :username ,username)))
+      (push session elfin--sessions)
+      (setq elfin--active-session session)
+      (message "Authenticated as %s on %s via Quick Connect" username server))
+    :else (message "Quick Connect authentication failed: %S" err)))
+
+(defun elfin-quick-connect (server)
+  "Authenticate with Jellyfin SERVER using Quick Connect.
+Initiates a Quick Connect request, displays the code, and waits
+for the user to approve it in the Jellyfin dashboard."
+  (interactive
+   (list (read-string "Jellyfin server URL: ")))
+  (elfin-auth--post server "/QuickConnect/Initiate" nil
+    (let ((secret (gethash "Secret" response))
+          (code (gethash "Code" response)))
+      (read-string
+       (format "Quick Connect code: %s. Press enter when approved: " code))
+      (elfin-auth--qc-poll server secret code))
+    :else (message "Quick Connect not available on %s: %S" server err)))
+
 (provide 'elfin-auth)
 
 ;;; elfin-auth.el ends here
