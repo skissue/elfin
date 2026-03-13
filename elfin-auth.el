@@ -10,7 +10,9 @@
 (eval-when-compile
   (require 'cl-lib))
 
-(defmacro elfin--preauth-get (server endpoint params &rest body)
+;; These macros are variants of the ones in elfin-api that are explicitly
+;; designed to be used before we have a session token.
+(defmacro elfin-auth--get (server endpoint params &rest body)
   "Make unauthenticated GET request to SERVER at ENDPOINT.
 PARAMS is a plist of query parameters, or nil. BODY is evaluated
 with the response data bound to `response'. If BODY contains
@@ -32,7 +34,7 @@ otherwise a default message is shown."
                  (elfin--api-log (format "GET %s -> ERROR %S" url err))
                  ,(or else-form '(message "Request failed: %S" err)))))))
 
-(defmacro elfin--preauth-post (server endpoint body &rest rest)
+(defmacro elfin-auth--post (server endpoint body &rest rest)
   "Make unauthenticated POST request to SERVER at ENDPOINT.
 BODY is a JSON-serializable plist. REST is evaluated with the
 response data bound to `response'. If REST contains `:else FORM',
@@ -55,10 +57,10 @@ default message is shown."
                  (elfin--api-log (format "POST %s -> ERROR %S" url err))
                  ,(or else-form '(message "Request failed: %S" err)))))))
 
-(defun elfin--do-authenticate (server user pass)
+(defun elfin-auth--do-authenticate (server user pass)
   "Authenticate with Jellyfin SERVER using USER and PASS.
 Save the session in `elfin--sessions' on success."
-  (elfin--preauth-post server "/Users/AuthenticateByName"
+  (elfin-auth--post server "/Users/AuthenticateByName"
     `(:Username ,user :Pw ,pass)
     (let* ((access-token (gethash "AccessToken" response))
            (user-data (gethash "User" response))
@@ -80,12 +82,12 @@ provided for non-interactive use."
   (interactive
    (list (read-string "Jellyfin server URL: ")))
   (if (and user pass)
-      (elfin--do-authenticate server user pass)
-    (elfin--preauth-get server "/Users/Public" nil
+      (elfin-auth--do-authenticate server user pass)
+    (elfin-auth--get server "/Users/Public" nil
       (let* ((names (seq-map (lambda (u) (gethash "Name" u)) response))
              (user (completing-read "Username: " names nil nil))
              (pass (read-passwd "Password: ")))
-        (elfin--do-authenticate server user pass))
+        (elfin-auth--do-authenticate server user pass))
       :else (message "Could not reach server %s: %S" server err))))
 
 (provide 'elfin-auth)
