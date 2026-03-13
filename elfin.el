@@ -40,7 +40,7 @@
   :type 'boolean
   :group 'elfin)
 
-(require 'elfin-api)
+(require 'elfin-auth)
 (require 'elfin-view)
 (require 'elfin-mpv)
 (require 'elfin-playback)
