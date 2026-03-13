@@ -86,33 +86,6 @@ response data bound to `response'."
                  (elfin--api-log (format "GET %s -> ERROR %S" url err))
                  (message "Request failed: %S" err))))))
 
-(defun elfin-authenticate (server user pass)
-  "Authenticate with Jellyfin SERVER using USER and PASS.
-Save the session in `elfin--sessions'."
-  (interactive
-   (list (read-string "Jellyfin server URL: ")
-         (read-string "Username: ")
-         (read-passwd "Password: ")))
-  (let ((url (concat (string-remove-suffix "/" server) "/Users/AuthenticateByName")))
-    (plz 'post url
-      :headers `(("Content-Type" . "application/json")
-                 ("Authorization" . ,(elfin--auth-header)))
-      :body (json-serialize `(:Username ,user :Pw ,pass))
-      :as #'json-parse-buffer
-      :then (lambda (response)
-              (let* ((access-token (gethash "AccessToken" response))
-                     (user-data (gethash "User" response))
-                     (user-id (gethash "Id" user-data))
-                     (session `(:server ,(string-remove-suffix "/" server)
-                                        :user-id ,user-id
-                                        :access-token ,access-token
-                                        :username ,user)))
-                (push session elfin--sessions)
-                (setq elfin--active-session session)
-                (message "Authenticated as %s on %s" user server)))
-      :else (lambda (err)
-              (message "Authentication failed: %S" err)))))
-
 (defun elfin--audio-url (id)
   "Return the audio stream URL for item ID."
   (format "%s/Audio/%s/universal?ApiKey=%s&Container=opus,webm|opus,ts|mp3,mp3,flac,webma,webm|webma,wav,ogg&TranscodingContainer=ts&TranscodingProtocol=hls&AudioCodec=opus"
