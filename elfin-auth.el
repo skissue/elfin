@@ -178,6 +178,39 @@ for the user to approve it in the Jellyfin dashboard."
       (elfin-auth--qc-poll server secret code))
     :else (message "Quick Connect not available on %s: %S" server err)))
 
+(defun elfin-delete-session ()
+  "Delete a session from `elfin--sessions'.
+Prompt for which session to delete. If the deleted session was
+active, clear `elfin--active-session'."
+  (interactive)
+  (unless elfin--sessions
+    (user-error "No sessions to delete"))
+  (let* ((candidates
+          (mapcar (lambda (s)
+                    (cons (format "%s @ %s"
+                                  (plist-get s :username)
+                                  (plist-get s :server))
+                          s))
+                  elfin--sessions))
+         (choice (completing-read "Delete session: " candidates nil t))
+         (session (cdr (assoc choice candidates))))
+    (setq elfin--sessions (delq session elfin--sessions))
+    (when (equal elfin--active-session session)
+      (setq elfin--active-session nil))
+    (elfin-save-sessions)
+    (message "Deleted session: %s" choice)))
+
+(defun elfin-delete-all-sessions ()
+  "Delete all sessions from `elfin--sessions' after confirmation."
+  (interactive)
+  (unless elfin--sessions
+    (user-error "No sessions to delete"))
+  (when (yes-or-no-p (format "Delete all %d session(s)?" (length elfin--sessions)))
+    (setq elfin--sessions nil
+          elfin--active-session nil)
+    (elfin-save-sessions)
+    (message "All sessions deleted")))
+
 (provide 'elfin-auth)
 
 ;;; elfin-auth.el ends here
