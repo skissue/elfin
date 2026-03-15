@@ -173,8 +173,9 @@ for the user to approve it in the Jellyfin dashboard."
   (elfin-auth--post server "/QuickConnect/Initiate" nil
     (let ((secret (gethash "Secret" response))
           (code (gethash "Code" response)))
+      (kill-new code)
       (read-string
-       (format "Quick Connect code: %s. Press enter when approved: " code))
+       (format "Quick Connect code: %s (copied). Press enter when approved: " code))
       (elfin-auth--qc-poll server secret code))
     :else (message "Quick Connect not available on %s: %S" server err)))
 
