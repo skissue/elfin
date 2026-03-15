@@ -10,6 +10,49 @@
 (eval-when-compile
   (require 'cl-lib))
 
+(defcustom elfin-session-file nil
+  "File in which to persist Jellyfin sessions.
+When non-nil, sessions are saved to and restored from this file."
+  :type '(choice (const :tag "Don't persist" nil) file)
+  :group 'elfin)
+
+(defun elfin-auth--ensure-session-file ()
+  "Create `elfin-session-file' if it doesn't exist and set permissions to 600."
+  (unless (file-exists-p elfin-session-file)
+    (make-empty-file elfin-session-file t))
+  (set-file-modes elfin-session-file #o600))
+
+(defun elfin-save-sessions ()
+  "Save `elfin--sessions' to `elfin-session-file'."
+  (when elfin-session-file
+    (elfin-auth--ensure-session-file)
+    (with-temp-file elfin-session-file
+      (prin1 elfin--sessions (current-buffer)))))
+
+(defun elfin-restore-sessions ()
+  "Restore sessions from `elfin-session-file'.
+When called interactively, prompt for which session to activate.
+Otherwise, activate the first session."
+  (interactive)
+  (when (and elfin-session-file (file-exists-p elfin-session-file))
+    (setq elfin--sessions
+          (with-temp-buffer
+            (insert-file-contents elfin-session-file)
+            (read (current-buffer))))
+    (setq elfin--active-session
+          (if-let* (((and (called-interactively-p 'any) (cdr elfin--sessions)))
+                    (candidates
+                     (mapcar (lambda (s)
+                               (cons (format "%s @ %s"
+                                             (plist-get s :username)
+                                             (plist-get s :server))
+                                     s))
+                             elfin--sessions))
+                    (choice (completing-read "Activate session: "
+                                             candidates nil t)))
+              (cdr (assoc choice candidates))
+            (car elfin--sessions)))))
+
 ;; These macros are variants of the ones in elfin-api that are explicitly
 ;; designed to be used before we have a session token.
 (defmacro elfin-auth--get (server endpoint params &rest body)
@@ -71,6 +114,7 @@ Save the session in `elfin--sessions' on success."
                               :username ,user)))
       (push session elfin--sessions)
       (setq elfin--active-session session)
+      (elfin-save-sessions)
       (message "Authenticated as %s on %s" user server))
     :else (message "Authentication failed for %s: %S" user err)))
 
@@ -116,6 +160,7 @@ CODE is the user-facing code shown in messages."
                               :username ,username)))
       (push session elfin--sessions)
       (setq elfin--active-session session)
+      (elfin-save-sessions)
       (message "Authenticated as %s on %s via Quick Connect" username server))
     :else (message "Quick Connect authentication failed: %S" err)))
 
