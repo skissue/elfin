@@ -201,12 +201,15 @@ active, clear `elfin--active-session'."
     (elfin-save-sessions)
     (message "Deleted session: %s" choice)))
 
-(defun elfin-delete-all-sessions ()
-  "Delete all sessions from `elfin--sessions' after confirmation."
-  (interactive)
+(defun elfin-delete-all-sessions (no-confirm)
+  "Delete all sessions from `elfin--sessions'.
+Prompt the user for confirmation unless NO-CONFIRM is non-nil."
+  (interactive "P")
   (unless elfin--sessions
     (user-error "No sessions to delete"))
-  (when (yes-or-no-p (format "Delete all %d session(s)?" (length elfin--sessions)))
+  (when (or no-confirm
+            (yes-or-no-p
+             (format "Delete all %d session(s)?" (length elfin--sessions))))
     (setq elfin--sessions nil
           elfin--active-session nil)
     (elfin-save-sessions)
