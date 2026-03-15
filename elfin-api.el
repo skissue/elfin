@@ -6,6 +6,7 @@
 
 ;;; Code:
 
+(require 'elfin-vars)
 (require 'plz)
 
 (defconst elfin--client-name "elfin"

@@ -11,16 +11,6 @@
 (require 'elfin-api)
 (require 'elfin-playback)
 
-(defcustom elfin-thumbnail-size '(64 . 64)
-  "Thumbnail size (width . height)."
-  :type '(cons integer integer)
-  :group 'elfin)
-
-(defcustom elfin-max-items-per-page 100
-  "Maximum items to list per page."
-  :type 'integer
-  :group 'elfin)
-
 (defvar-local elfin--current-page 1
   "Current page number in collection buffer.")
 

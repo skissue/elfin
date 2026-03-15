@@ -6,15 +6,10 @@
 
 ;;; Code:
 
+(require 'elfin-vars)
 (require 'elfin-api)
 (eval-when-compile
   (require 'cl-lib))
-
-(defcustom elfin-session-file nil
-  "File in which to persist Jellyfin sessions.
-When non-nil, sessions are saved to and restored from this file."
-  :type '(choice (const :tag "Don't persist" nil) file)
-  :group 'elfin)
 
 (defun elfin-auth--ensure-session-file ()
   "Create `elfin-session-file' if it doesn't exist and set permissions to 600."

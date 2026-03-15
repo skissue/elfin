@@ -6,12 +6,8 @@
 
 ;;; Code:
 
+(require 'elfin-vars)
 (require 'cl-lib)
-
-(defcustom elfin-mpv-extra-options nil
-  "List of extra options to pass to the mpv process."
-  :type '(repeat string)
-  :group 'elfin)
 
 (defconst elfin--mpv-socket "/tmp/elfin-mpv.sock"
   "Path to mpv IPC socket.")
