@@ -23,6 +23,8 @@
   :type 'string
   :group 'elfin-scrobble)
 
+(defvar elfin-scrobble-mode) ; forward declaration for byte-compiler
+
 (defvar elfin--current-track nil
   "Hash table of current track metadata from Jellyfin.")
 
@@ -71,11 +73,11 @@ If LISTENED-AT is provided, include it for scrobble submissions."
       (setq additional-info
             (plist-put additional-info :tracknumber index-number)))
     (when provider-ids
-      (when-let ((mbid (gethash "MusicBrainzTrack" provider-ids)))
+      (when-let* ((mbid (gethash "MusicBrainzTrack" provider-ids)))
         (setq additional-info (plist-put additional-info :recording_mbid mbid)))
-      (when-let ((mbid (gethash "MusicBrainzAlbum" provider-ids)))
+      (when-let* ((mbid (gethash "MusicBrainzAlbum" provider-ids)))
         (setq additional-info (plist-put additional-info :release_mbid mbid)))
-      (when-let ((mbid (gethash "MusicBrainzArtist" provider-ids)))
+      (when-let* ((mbid (gethash "MusicBrainzArtist" provider-ids)))
         (setq additional-info (plist-put additional-info :artist_mbids (vector mbid)))))
     (let ((payload `(:track_metadata
                      (:artist_name ,artist-name
