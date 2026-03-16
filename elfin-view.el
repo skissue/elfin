@@ -114,15 +114,15 @@
     ('album '(("Album" 20 t) .
               (lambda (item) (or (gethash "Album" item) "Unknown"))))
     ('duration '(("Duration" 10 t) .
-                 (lambda (item) (elfin--format-duration
-                            (gethash "RunTimeTicks" item)))))
+                 (lambda (item) (elfin--format-duration)
+                   (gethash "RunTimeTicks" item))))
     ('count '(("Items" 8 t) .
               (lambda (item)
                 (number-to-string (or (gethash "ChildCount" item) 0)))))
     (_ (error "Unknown field: %s" field))))
 
 (cl-defun elfin--display-items (&key items buffer-name fields page
-                                        pagination-cmd open-cmd queue-cmd play-cmd)
+                                     pagination-cmd open-cmd queue-cmd play-cmd)
   "Display ITEMS in BUFFER-NAME with FIELDS on PAGE.
 PAGINATION-CMD navigates pages, OPEN-CMD opens items, QUEUE-CMD queues items."
   (let* ((field-specs (mapcar #'elfin--field-spec fields))
