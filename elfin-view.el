@@ -60,6 +60,14 @@
 (cl-defmethod elfin-view-queue ((_type (eql albums)) id) (elfin-queue-collection id))
 (cl-defmethod elfin-view-play ((_type (eql albums)) id) (elfin-play-collection id))
 
+;; artists
+(cl-defmethod elfin-view-fields ((_type (eql artists))) '(name count genres))
+(cl-defmethod elfin-view-params ((_type (eql artists))) '(:includeItemTypes "MusicArtist" :Recursive t :Fields "ChildCount,Genres"))
+(cl-defmethod elfin-view-buffer-name ((_type (eql artists))) "*Elfin Artists*")
+(cl-defmethod elfin-view-open ((_type (eql artists)) id) (elfin--show-view 'albums nil id))
+(cl-defmethod elfin-view-queue ((_type (eql artists)) id) (elfin-queue-collection id))
+(cl-defmethod elfin-view-play ((_type (eql artists)) id) (elfin-play-collection id))
+
 ;; tracks
 (cl-defmethod elfin-view-fields ((_type (eql tracks))) '(name artists album duration))
 (cl-defmethod elfin-view-params ((_type (eql tracks))) '(:includeItemTypes "Audio" :Recursive t))
@@ -121,6 +129,12 @@
     ('count '(("Items" 8 t) .
               (lambda (item)
                 (number-to-string (or (gethash "ChildCount" item) 0)))))
+    ('genres '(("Genres" 20 t) .
+               (lambda (item)
+                 (let ((genres (gethash "Genres" item)))
+                   (if (and genres (> (length genres) 0))
+                       (string-join (append genres nil) ", ")
+                     "")))))
     (_ (error "Unknown field: %s" field))))
 
 ;;; Core view machinery
@@ -212,6 +226,11 @@
   "List available playlists."
   (interactive)
   (elfin--show-view 'playlists))
+
+(defun elfin-artists ()
+  "List available artists."
+  (interactive)
+  (elfin--show-view 'artists))
 
 (defun elfin-albums ()
   "List available albums."
