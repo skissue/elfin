@@ -187,10 +187,10 @@ Show a message notifying the user unless SILENT is non-nil."
   "Handle mpv idle EVENT."
   (run-hooks 'elfin-idle-hook))
 
-(elfin-observe-property "playlist-playing-pos" #'elfin--handle-playlist-pos)
+(elfin--add-property-callback "playlist-playing-pos" #'elfin--handle-playlist-pos)
 (elfin--add-event-handler "start-file" #'elfin--handle-start-file)
 (elfin--add-event-handler "end-file" #'elfin--handle-end-file)
-(elfin-observe-property "pause" #'elfin--handle-pause)
+(elfin--add-property-callback "pause" #'elfin--handle-pause)
 (elfin--add-event-handler "playback-restart" #'elfin--handle-playback-restart)
 (elfin--add-event-handler "idle" #'elfin--handle-idle)
 

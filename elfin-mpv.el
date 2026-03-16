@@ -173,28 +173,31 @@ receives the normalized data field of the response."
                        (setq elfin--ipc-process nil))))
     (elfin--reregister-observers)))
 
-(defun elfin-observe-property (property fn)
-  "Observe PROPERTY changes, calling FN with the new value.
-FN receives the new property value as its single argument.
-Values are normalized: :null and :false become nil, :true becomes t.
-If PROPERTY is already being observed, FN is simply added to the callback list."
-  (elfin--ensure-ipc)
+(defun elfin--add-property-callback (property fn)
+  "Register FN as a callback for PROPERTY changes.
+FN receives the new property value as its single argument.  Values are
+normalized: :null and :false become nil, :true becomes t.  If PROPERTY
+is already being observed, FN is simply added to the callback list.
+Otherwise, if mpv is currently running, send the observe_property
+command to begin receiving that property."
   (unless (assoc property elfin--property-callbacks)
     (push (list property) elfin--property-callbacks)
     (let ((id (cl-incf elfin--observer-counter)))
       (push (cons id property) elfin--property-observers)
-      (elfin--mpv-send `("observe_property" ,id ,property))))
+      (when (and elfin--ipc-process (process-live-p elfin--ipc-process))
+        (elfin--mpv-send `("observe_property" ,id ,property)))))
   (cl-pushnew fn (cdr (assoc property elfin--property-callbacks))))
 
-(defun elfin-unobserve-property (property fn)
-  "Remove FN from observers of PROPERTY.
-If no observers remain, unregister the property from mpv."
+(defun elfin--remove-property-callback (property fn)
+  "Remove FN from callbacks for PROPERTY.
+If no callbacks remain, unregister the property from mpv."
   (when-let* ((cb-entry (assoc property elfin--property-callbacks)))
     (cl-callf2 delq fn (cdr cb-entry))
     (unless (cdr cb-entry)
       (cl-callf2 assoc-delete-all property elfin--property-callbacks)
       (when-let* ((obs (rassoc property elfin--property-observers)))
-        (elfin--mpv-send `("unobserve_property" ,(car obs)))
+        (when (and elfin--ipc-process (process-live-p elfin--ipc-process))
+          (elfin--mpv-send `("unobserve_property" ,(car obs))))
         (cl-callf2 delq obs elfin--property-observers)))))
 
 (defun elfin--add-event-handler (event-name fn)
