@@ -1,0 +1,138 @@
+#+title: Elfin
+#+author: Ad <me@skissue.xyz>
+
+A Jellyfin music player for Emacs using mpv.
+
+Work-in-progress! Many features are still missing/half-baked.
+
+* Table of Contents
+:PROPERTIES:
+:TOC:      :include all :depth 2 :force (nothing) :ignore (this) :local (nothing)
+:END:
+:CONTENTS:
+- [[#installation][Installation]]
+  - [[#requirements][Requirements]]
+  - [[#manual][Manual]]
+- [[#usage][Usage]]
+  - [[#authentication][Authentication]]
+  - [[#browsing][Browsing]]
+  - [[#playback][Playback]]
+- [[#extras][Extras]]
+  - [[#elfin-listenbrainz][elfin-listenbrainz]]
+- [[#roadmap][Roadmap]]
+- [[#license][License]]
+:END:
+
+* Installation
+This package is not yet in any repositories. Install it with your favorite from-Git method!
+
+** Requirements
+- Emacs 26.1 or later
+- [[https://github.com/alphapapa/plz.el][plz.el]] (0.9.1+)
+- [[https://mpv.io/][mpv]]
+- A [[https://jellyfin.org/][Jellyfin]] server
+
+** Manual
+Clone this repository and add it to your =load-path=:
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/elfin")
+(require 'elfin)
+#+end_src
+
+* Usage
+** Authentication
+Authenticate with your Jellyfin server using one of the following methods:
+
+- =M-x elfin-quick-connect= :: Authenticate by providing a server URL, and then using Quick Connect (preferred).
+- =M-x elfin-authenticate= :: Authenticate using the standard server URL, username, password flow.
+
+Sessions are stored in memory by default. To persist sessions across Emacs restarts, set =elfin-session-file= *before authenticating*:
+
+#+begin_src elisp
+  (setopt elfin-session-file
+          (expand-file-name "elfin-sessions" user-emacs-directory))
+#+end_src
+
+Use =M-x elfin-restore-sessions= to reload saved sessions.
+
+To manage sessions:
+- =M-x elfin-delete-session= :: Delete a specific session.
+- =M-x elfin-delete-all-sessions= :: Delete all sessions.
+
+** Browsing
+Browse your Jellyfin library with the following entry points:
+
+| Command         | Binding (in view) | Description        |
+|-----------------+-------------------+--------------------|
+| =elfin-albums=    | =1=                 | List all albums    |
+| =elfin-artists=   | =2=                 | List all artists   |
+| =elfin-tracks=    | =3=                 | List all tracks    |
+| =elfin-playlists= | =4=                 | List all playlists |
+
+Items are displayed in a tabulated list with thumbnails. Within a view buffer:
+
+| Key         | Command                  | Description                                  |
+|-------------+--------------------------+----------------------------------------------|
+| =RET=         | =elfin-items-open=         | Open item (open album/artist, or play track) |
+| =a=           | =elfin-items-queue=        | Add item to playback queue                   |
+| =C-<return>= | =elfin-items-play=         | Play item, replacing current queue           |
+| =s=           | =elfin-items-search=       | Search within current view                   |
+| =S=           | =elfin-items-clear-search= | Clear search filter                          |
+| =N=           | =elfin-items-next-page=    | Next page of results                         |
+| =P=           | =elfin-items-prev-page=    | Previous page of results                     |
+
+** Playback
+Playback is handled via mpv, which is started automatically when needed.
+
+| Command             | Description                    |
+|---------------------+--------------------------------|
+| =elfin-pause=         | Toggle pause                   |
+| =elfin-stop=          | Stop playback and clear queue  |
+| =elfin-volume-up=     | Increase volume                |
+| =elfin-volume-down=   | Decrease volume                |
+| =elfin-volume-set=    | Set volume to a specific value |
+| =elfin-loop-track=    | Toggle track looping           |
+| =elfin-loop-playlist= | Toggle playlist looping        |
+| =elfin-clear-queue=   | Clear the playback queue       |
+| =elfin-kill=          | Kill the mpv process           |
+
+*** Customization
+| Variable                | Default | Description                              |
+|-------------------------+---------+------------------------------------------|
+| =elfin-session-file=      | =nil=     | File to persist sessions across restarts |
+| =elfin-default-volume=  | =100=     | Default mpv volume (0–100)               |
+| =elfin-volume-step=       | =5=       | Step size for volume up/down             |
+| =elfin-replaygain=        | =nil=     | ReplayGain mode (=nil=, =track=, or =album=)   |
+| =elfin-mpv-extra-options= | =nil=     | Extra command-line options for mpv       |
+
+*** Hooks (advanced)
+Elfin provides hooks for integrating with other packages:
+
+- =elfin-file-start-hook= :: Run when a new file starts playing (receives track ID).
+- =elfin-file-end-hook= :: Run when a file finishes (receives track ID and reason).
+- =elfin-pause-hook= :: Run when pause state changes (receives non-nil if paused).
+- =elfin-idle-hook= :: Run when mpv enters idle state.
+
+* Extras
+The =extras/= directory includes optional, self-contained extensions that extend Elfin in various ways.
+
+** =elfin-listenbrainz=
+A global minor mode for scrobbling tracks to [[https://listenbrainz.org/][ListenBrainz]] (or any compatible API).
+
+#+begin_src elisp
+(setopt elfin-listenbrainz-token "your-token-here")
+(elfin-listenbrainz-mode 1)
+#+end_src
+
+* Roadmap
+- [ ] Rework keymaps
+- [ ] Shuffle
+- [ ] Queue view
+- [ ] Now-playing display and modeline indicator (maybe extra)
+- [ ] Lyrics support
+- [ ] Global live search with Consult (extra)
+- [ ] Offline caching
+
+* License
+Elfin is licensed under the [[file:LICENSE][GNU General Public License v3.0]].
