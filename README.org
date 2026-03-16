@@ -17,6 +17,7 @@ Work-in-progress! Many features are still missing/half-baked.
   - [[#authentication][Authentication]]
   - [[#browsing][Browsing]]
   - [[#playback][Playback]]
+- [[#example-configuration][Example Configuration]]
 - [[#extras][Extras]]
   - [[#elfin-listenbrainz][elfin-listenbrainz]]
 - [[#roadmap][Roadmap]]
@@ -113,6 +114,24 @@ Elfin provides hooks for integrating with other packages:
 - =elfin-file-end-hook= :: Run when a file finishes (receives track ID and reason).
 - =elfin-pause-hook= :: Run when pause state changes (receives non-nil if paused).
 - =elfin-idle-hook= :: Run when mpv enters idle state.
+
+* Example Configuration
+#+begin_src elisp
+  (require 'elfin)
+
+  (setopt elfin-session-file (expand-file-name "elfin-sessions"
+                                               user-emacs-directory)
+          elfin-default-volume 80
+          elfin-volume-step 5
+          elfin-replaygain 'album)
+
+  (elfin-restore-sessions)
+
+  ;; Optional: ListenBrainz scrobbling
+  (require 'elfin-listenbrainz)
+  (setopt elfin-listenbrainz-token "your-token-here")
+  (elfin-listenbrainz-mode 1)
+#+end_src
 
 * Extras
 The =extras/= directory includes optional, self-contained extensions that extend Elfin in various ways.
