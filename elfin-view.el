@@ -22,6 +22,9 @@
 (defvar-local elfin--current-page 1
   "Current page number in collection buffer.")
 
+(defvar-local elfin--view-search-term nil
+  "Active search term for the current view, or nil.")
+
 ;;; Generic dispatch
 
 (cl-defgeneric elfin-view-fields (type)
@@ -139,8 +142,8 @@
 
 ;;; Core view machinery
 
-(defun elfin--display-items (items type page parent-id)
-  "Display ITEMS for view TYPE on PAGE with PARENT-ID."
+(defun elfin--display-items (items type page parent-id search-term)
+  "Display ITEMS for view TYPE on PAGE with PARENT-ID and SEARCH-TERM."
   (let* ((fields (elfin-view-fields type))
          (field-specs (mapcar #'elfin--field-spec fields))
          (columns (vconcat (list (elfin--image-column-spec))
@@ -152,12 +155,16 @@
               (list id (vconcat (list (format "[[%s]]" id))
                                 (mapcar (lambda (fn) (funcall fn item))
                                         extractors))))))
-         (buf (get-buffer-create (elfin-view-buffer-name type))))
+         (buf-name (if search-term
+                       (format "%s [search: %s]" (elfin-view-buffer-name type) search-term)
+                     (elfin-view-buffer-name type)))
+         (buf (get-buffer-create buf-name)))
     (with-current-buffer buf
       (elfin-items-mode)
       (setq elfin--view-type type
             elfin--view-parent-id parent-id
             elfin--current-page page
+            elfin--view-search-term search-term
             tabulated-list-format columns
             tabulated-list-entries (mapcar format-entry items))
       (tabulated-list-init-header)
@@ -170,30 +177,32 @@
        (lambda (id err) (message "Error fetching thumbnail for %s: %S" id err))))
     (switch-to-buffer buf)))
 
-(defun elfin--show-view (type &optional page parent-id)
-  "Fetch and display view TYPE at PAGE, optionally filtered by PARENT-ID."
+(defun elfin--show-view (type &optional page parent-id search-term)
+  "Fetch and display view TYPE at PAGE, optionally filtered by PARENT-ID.
+When SEARCH-TERM is non-nil, filter results by that term."
   (let* ((page (or page 1))
          (start-index (* (1- page) elfin-max-items-per-page))
          (params (append (elfin-view-params type)
                          (when parent-id `(:parentId ,parent-id))
+                         (when search-term `(:searchTerm ,search-term))
                          `(:startIndex ,start-index
                                        :limit ,elfin-max-items-per-page))))
     (elfin--get "/Items" params
       (elfin--display-items (gethash "Items" response)
-                            type page parent-id))))
+                            type page parent-id search-term))))
 
 ;;; Interactive commands
 
 (defun elfin-items-next-page ()
   "Go to next page of items."
   (interactive)
-  (elfin--show-view elfin--view-type (1+ elfin--current-page) elfin--view-parent-id))
+  (elfin--show-view elfin--view-type (1+ elfin--current-page) elfin--view-parent-id elfin--view-search-term))
 
 (defun elfin-items-prev-page ()
   "Go to previous page of items."
   (interactive)
   (if (> elfin--current-page 1)
-      (elfin--show-view elfin--view-type (1- elfin--current-page) elfin--view-parent-id)
+      (elfin--show-view elfin--view-type (1- elfin--current-page) elfin--view-parent-id elfin--view-search-term)
     (user-error "No previous page")))
 
 (defun elfin-items-open ()
@@ -211,6 +220,16 @@
   (interactive)
   (elfin-view-play elfin--view-type (tabulated-list-get-id)))
 
+(defun elfin-items-search (term)
+  "Search the current view for TERM."
+  (interactive "sSearch: ")
+  (elfin--show-view elfin--view-type 1 elfin--view-parent-id term))
+
+(defun elfin-items-clear-search ()
+  "Clear the search and return to the unfiltered view."
+  (interactive)
+  (elfin--show-view elfin--view-type 1 elfin--view-parent-id))
+
 (define-derived-mode elfin-items-mode tabulated-list-mode "Elfin"
   "Major mode for displaying Jellyfin item lists."
   (setq tabulated-list-padding 2)
@@ -219,6 +238,8 @@
   (local-set-key (kbd "RET") #'elfin-items-open)
   (local-set-key (kbd "a") #'elfin-items-queue)
   (local-set-key (kbd "C-<return>") #'elfin-items-play)
+  (local-set-key (kbd "s") #'elfin-items-search)
+  (local-set-key (kbd "S") #'elfin-items-clear-search)
   (local-set-key (kbd "1") #'elfin-albums)
   (local-set-key (kbd "2") #'elfin-artists)
   (local-set-key (kbd "3") #'elfin-tracks)
