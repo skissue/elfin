@@ -44,14 +44,6 @@
 
 ;;; View type definitions
 
-;; playlists
-(cl-defmethod elfin-view-fields ((_type (eql playlists))) '(name count duration))
-(cl-defmethod elfin-view-params ((_type (eql playlists))) '(:includeItemTypes "Playlist" :Recursive t))
-(cl-defmethod elfin-view-buffer-name ((_type (eql playlists))) "*Elfin Playlists*")
-(cl-defmethod elfin-view-open ((_type (eql playlists)) id) (elfin--show-view 'tracks nil id))
-(cl-defmethod elfin-view-queue ((_type (eql playlists)) id) (elfin-queue-collection id))
-(cl-defmethod elfin-view-play ((_type (eql playlists)) id) (elfin-play-collection id))
-
 ;; albums
 (cl-defmethod elfin-view-fields ((_type (eql albums))) '(name artist duration))
 (cl-defmethod elfin-view-params ((_type (eql albums))) '(:includeItemTypes "MusicAlbum" :Recursive t))
@@ -75,6 +67,14 @@
 (cl-defmethod elfin-view-open ((_type (eql tracks)) id) (elfin-play-track id))
 (cl-defmethod elfin-view-queue ((_type (eql tracks)) id) (elfin-queue-track id))
 (cl-defmethod elfin-view-play ((_type (eql tracks)) id) (elfin-play-track id))
+
+;; playlists
+(cl-defmethod elfin-view-fields ((_type (eql playlists))) '(name count duration))
+(cl-defmethod elfin-view-params ((_type (eql playlists))) '(:includeItemTypes "Playlist" :Recursive t))
+(cl-defmethod elfin-view-buffer-name ((_type (eql playlists))) "*Elfin Playlists*")
+(cl-defmethod elfin-view-open ((_type (eql playlists)) id) (elfin--show-view 'tracks nil id))
+(cl-defmethod elfin-view-queue ((_type (eql playlists)) id) (elfin-queue-collection id))
+(cl-defmethod elfin-view-play ((_type (eql playlists)) id) (elfin-play-collection id))
 
 ;;; Display helpers
 
@@ -218,29 +218,33 @@
   (local-set-key (kbd "P") #'elfin-items-prev-page)
   (local-set-key (kbd "RET") #'elfin-items-open)
   (local-set-key (kbd "a") #'elfin-items-queue)
-  (local-set-key (kbd "C-<return>") #'elfin-items-play))
+  (local-set-key (kbd "C-<return>") #'elfin-items-play)
+  (local-set-key (kbd "1") #'elfin-albums)
+  (local-set-key (kbd "2") #'elfin-artists)
+  (local-set-key (kbd "3") #'elfin-tracks)
+  (local-set-key (kbd "4") #'elfin-playlists))
 
 ;;; Entry points
-
-(defun elfin-playlists ()
-  "List available playlists."
-  (interactive)
-  (elfin--show-view 'playlists))
-
-(defun elfin-artists ()
-  "List available artists."
-  (interactive)
-  (elfin--show-view 'artists))
 
 (defun elfin-albums ()
   "List available albums."
   (interactive)
   (elfin--show-view 'albums))
 
+(defun elfin-artists ()
+  "List available artists."
+  (interactive)
+  (elfin--show-view 'artists))
+
 (defun elfin-tracks ()
   "List available tracks."
   (interactive)
   (elfin--show-view 'tracks))
+
+(defun elfin-playlists ()
+  "List available playlists."
+  (interactive)
+  (elfin--show-view 'playlists))
 
 (provide 'elfin-view)
 
