@@ -135,10 +135,10 @@ TRACK-ID is the Jellyfin item ID of the track."
           (warn "`elfin-listenbrainz-mode' enabled without `elfin-listenbrainz-token' set"))
         (add-hook 'elfin-file-start-hook #'elfin--listenbrainz-on-start-file)
         (add-hook 'elfin-file-end-hook #'elfin--listenbrainz-on-end-file)
-        (elfin-observe-property "time-pos" #'elfin--listenbrainz-check-condition))
+        (elfin--add-property-callback "time-pos" #'elfin--listenbrainz-check-condition))
     (remove-hook 'elfin-file-start-hook #'elfin--listenbrainz-on-start-file)
     (remove-hook 'elfin-file-end-hook #'elfin--listenbrainz-on-end-file)
-    (elfin-unobserve-property "time-pos" #'elfin--listenbrainz-check-condition)
+    (elfin--remove-property-callback "time-pos" #'elfin--listenbrainz-check-condition)
     (setq elfin--listenbrainz-current-track nil
           elfin--listenbrainz-track-start-time nil
           elfin--listenbrainz-scrobbled-p nil)))
