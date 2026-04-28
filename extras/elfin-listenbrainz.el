@@ -80,9 +80,9 @@ If LISTENED-AT is provided, include it for scrobble submissions."
       (when-let* ((mbid (gethash "MusicBrainzArtist" provider-ids)))
         (setq additional-info (plist-put additional-info :artist_mbids (vector mbid)))))
     (let ((payload `(:track_metadata
-                     (:artist_name ,artist-name
-                                   :track_name ,track-name
-                                   :release_name ,release-name
+                     (:artist_name ,(or artist-name :null)
+                                   :track_name ,(or track-name :null)
+                                   :release_name ,(or release-name :null)
                                    :additional_info ,additional-info))))
       (when listened-at
         (setq payload (plist-put payload :listened_at listened-at)))
