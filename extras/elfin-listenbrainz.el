@@ -47,7 +47,7 @@
         :body body
         :as #'json-parse-buffer
         :then (lambda (_response)
-                (when (eq listen-type 'single)
+                (when (equal listen-type "single")
                   (message "Scrobbled to ListenBrainz")))
         :else (lambda (err)
                 (message "ListenBrainz submit failed: %S" err))))))
