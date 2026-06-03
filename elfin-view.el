@@ -127,8 +127,8 @@
     ('album '(("Album" 20 t) .
               (lambda (item) (or (gethash "Album" item) "Unknown"))))
     ('duration '(("Duration" 10 t) .
-                 (lambda (item) (elfin--format-duration
-                            (gethash "RunTimeTicks" item)))))
+                 (lambda (item)
+                   (elfin--format-duration (gethash "RunTimeTicks" item)))))
     ('count '(("Items" 8 t) .
               (lambda (item)
                 (number-to-string (or (gethash "ChildCount" item) 0)))))
