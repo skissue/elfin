@@ -100,6 +100,24 @@
             (delete-region (match-beginning 0) (match-end 0))
             (insert-image (create-image path))))))))
 
+(defun elfin--insert-blank-thumbnail (buffer id)
+  "Insert a blank thumbnail for ID into BUFFER at placeholder."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (with-silent-modifications
+        (save-excursion
+          (goto-char (point-min))
+          (when (search-forward (format "[[%s]]" id) nil t)
+            (delete-region (match-beginning 0) (match-end 0))
+            (insert
+             (propertize
+              " " 'display
+              `(space
+                :width ,(/ (float (car elfin-thumbnail-size))
+                           (frame-char-width))
+                :height ,(/ (float (cdr elfin-thumbnail-size))
+                            (frame-char-height)))))))))))
+
 (defun elfin--format-duration (ticks)
   "Format TICKS (100-nanosecond units) as human-readable duration."
   (if (or (null ticks) (zerop ticks))
@@ -178,8 +196,10 @@
                      (cdr elfin-thumbnail-size)
                      (lambda (path) (elfin--insert-thumbnail buf id path))
                      (lambda (_path err)
-                       (message "Error fetching thumbnail for %s: %S"
-                                id err))))))
+                       (if (eq err 'no-image)
+                           (elfin--insert-blank-thumbnail buf id)
+                         (message "Error fetching thumbnail for %s: %S"
+                                  id err)))))))
     (switch-to-buffer buf)))
 
 (defun elfin--show-view (type &optional page parent-id search-term)
