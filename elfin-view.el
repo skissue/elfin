@@ -9,6 +9,7 @@
 (require 'cl-lib)
 (require 'map)
 (require 'elfin-api)
+(require 'elfin-image)
 (require 'elfin-playback)
 
 ;;; Buffer-local state
@@ -88,8 +89,8 @@
                     (frame-char-width)))
         nil))
 
-(defun elfin--insert-thumbnail (buffer id data)
-  "Insert thumbnail DATA for ID into BUFFER at placeholder."
+(defun elfin--insert-thumbnail (buffer id path)
+  "Insert thumbnail at PATH for ID into BUFFER at placeholder."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (with-silent-modifications
@@ -97,7 +98,7 @@
           (goto-char (point-min))
           (when (search-forward (format "[[%s]]" id) nil t)
             (delete-region (match-beginning 0) (match-end 0))
-            (insert-image (create-image data nil :data))))))))
+            (insert-image (create-image path))))))))
 
 (defun elfin--format-duration (ticks)
   "Format TICKS (100-nanosecond units) as human-readable duration."
@@ -169,12 +170,16 @@
             tabulated-list-entries (mapcar format-entry items))
       (tabulated-list-init-header)
       (tabulated-list-print t)
-      (elfin--fetch-thumbnails
-       (mapcar #'car tabulated-list-entries)
-       (car elfin-thumbnail-size)
-       (cdr elfin-thumbnail-size)
-       (lambda (id data) (elfin--insert-thumbnail buf id data))
-       (lambda (id err) (message "Error fetching thumbnail for %s: %S" id err))))
+      (cl-loop for item across items
+               do (let ((id (gethash "Id" item)))
+                    (elfin--ensure-image-file
+                     item
+                     (car elfin-thumbnail-size)
+                     (cdr elfin-thumbnail-size)
+                     (lambda (path) (elfin--insert-thumbnail buf id path))
+                     (lambda (_path err)
+                       (message "Error fetching thumbnail for %s: %S"
+                                id err))))))
     (switch-to-buffer buf)))
 
 (defun elfin--show-view (type &optional page parent-id search-term)
