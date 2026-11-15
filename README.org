@@ -145,6 +145,7 @@ A global minor mode for scrobbling tracks to [[https://listenbrainz.org/][Listen
 #+end_src
 
 * Roadmap
+- [ ] Report playback to Jellyfin
 - [ ] Rework keymaps
 - [ ] Shuffle
 - [ ] Queue view
