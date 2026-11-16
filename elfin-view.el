@@ -257,6 +257,8 @@ When SEARCH-TERM is non-nil, filter results by that term."
 
 (define-derived-mode elfin-items-mode tabulated-list-mode "Elfin"
   "Major mode for displaying Jellyfin item lists."
+  (visual-line-mode -1)
+  (setq-local truncate-lines t)
   (setq tabulated-list-padding 2)
   (local-set-key (kbd "N") #'elfin-items-next-page)
   (local-set-key (kbd "P") #'elfin-items-prev-page)

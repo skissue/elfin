@@ -2,6 +2,20 @@
 
 (require 'elfin-test-helper)
 
+(ert-deftest elfin-view-truncates-by-default-but-allows-wrapping-hook ()
+  (let ((was-enabled global-visual-line-mode))
+    (unwind-protect
+        (progn
+          (global-visual-line-mode 1)
+          (dolist (wrap '(nil t))
+            (let ((elfin-items-mode-hook
+                   (when wrap (list (lambda () (visual-line-mode 1))))))
+              (with-temp-buffer
+                (elfin-items-mode)
+                (should (eq visual-line-mode wrap))
+                (should (eq truncate-lines (not wrap)))))))
+      (global-visual-line-mode (if was-enabled 1 -1)))))
+
 (ert-deftest elfin-view-duration-boundaries ()
   (dolist (case '((nil "") (0 "") (590000000 "0:59") (600000000 "1:00")
                   (35990000000 "59:59") (36000000000 "1:00:00")
