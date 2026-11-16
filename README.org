@@ -20,6 +20,7 @@ Work-in-progress! Many features are still missing/half-baked.
 - [[#example-configuration][Example Configuration]]
 - [[#extras][Extras]]
   - [[#elfin-listenbrainz][elfin-listenbrainz]]
+- [[#testing][Testing]]
 - [[#roadmap][Roadmap]]
 - [[#license][License]]
 :END:
@@ -143,6 +144,10 @@ A global minor mode for scrobbling tracks to [[https://listenbrainz.org/][Listen
 (setopt elfin-listenbrainz-token "your-token-here")
 (elfin-listenbrainz-mode 1)
 #+end_src
+
+* Testing
+Run =just test= from the repository root. Requires Emacs and =plz=,
+doesn't use a Jellyfin server or mpv.
 
 * Roadmap
 - [ ] Report playback to Jellyfin
