@@ -17,13 +17,36 @@ Callbacks remain pending until the test explicitly delivers a response."
          requests)
      (cl-letf (((symbol-function 'plz)
                 (lambda (method url &rest options)
-                  (push (list method url options) requests))))
+                  (push (list method url options) requests)
+                  nil)))
        ,@body)))
 
 (defun elfin-test-respond (request json &optional failure)
   "Deliver JSON to captured REQUEST, or FAILURE to its error callback."
-  (funcall (plist-get (nth 2 request) (if failure :else :then))
-           (if failure failure (json-parse-string json))))
+  (let ((options (nth 2 request)))
+    (funcall (plist-get options (if failure :else :then))
+             (cond (failure failure)
+                   ((eq (plist-get options :as) 'string) json)
+                   (t (json-parse-string json))))))
+
+(defun elfin-test-wait-for (predicate)
+  "Wait for PREDICATE to become non-nil, failing after two seconds."
+  (let ((deadline (time-add (current-time) 2)) result)
+    (while (and (not (setq result (funcall predicate)))
+                (time-less-p (current-time) deadline))
+      (accept-process-output nil 0.01))
+    (should result)
+    result))
+
+(defun elfin-test-await (future)
+  "Await FUTURE within the active mocks, failing after two seconds."
+  (should (futur-p future))
+  (let (done value failure)
+    (futur-bind future
+                (lambda (result) (setq value result done t) nil)
+                (lambda (err) (setq failure err done t) nil))
+    (elfin-test-wait-for (lambda () done))
+    (if failure (signal (car failure) (cdr failure)) value)))
 
 (defun elfin-test-query (request)
   "Return decoded query parameters of captured REQUEST as an alist."

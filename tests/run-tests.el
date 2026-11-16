@@ -1,6 +1,9 @@
 ;;; run-tests.el --- Source-only offline ERT runner -*- lexical-binding: t -*-
 
 (require 'cl-lib)
+;; Keep asynchronous continuations inside the fixtures' dynamic bindings.
+;; Futur chooses its scheduler when loaded, not per request.
+(setq futur-use-threads nil)
 (let* ((tests (file-name-directory (or load-file-name buffer-file-name)))
        (root (file-name-directory (directory-file-name tests))))
   (add-to-list 'load-path root)

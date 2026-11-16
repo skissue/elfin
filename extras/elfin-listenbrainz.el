@@ -110,13 +110,14 @@ If LISTENED-AT is provided, include it for scrobble submissions."
   "Handle file start for scrobbling.
 TRACK-ID is the Jellyfin item ID of the track."
   (when elfin-listenbrainz-mode
-    (elfin--get (format "/Items/%s" track-id) nil
-      (setq elfin--listenbrainz-current-track response)
-      (setq elfin--listenbrainz-track-start-time (floor (float-time)))
-      (setq elfin--listenbrainz-scrobbled-p nil)
-      (elfin--listenbrainz-submit
-       "playing_now"
-       (elfin--listenbrainz-build-payload response)))))
+    (elfin--consume-future
+     (futur-let* ((response <- (elfin--get (format "/Items/%s" track-id))))
+       (setq elfin--listenbrainz-current-track response)
+       (setq elfin--listenbrainz-track-start-time (floor (float-time)))
+       (setq elfin--listenbrainz-scrobbled-p nil)
+       (elfin--listenbrainz-submit
+        "playing_now"
+        (elfin--listenbrainz-build-payload response))))))
 
 (defun elfin--listenbrainz-on-end-file (_track-id _reason)
   "Handle file end for scrobbling."

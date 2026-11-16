@@ -90,16 +90,22 @@ Show a message notifying the user unless SILENT is non-nil."
 
 (defun elfin-play-collection (parent-id)
   "Clear queue and play all tracks under PARENT-ID."
-  (elfin--get-child-items parent-id
-      (elfin-clear-queue :silent)
-    (elfin-play-track (car ids) :silent)
-    (elfin-queue-tracks (cdr ids) :silent)
-    (message "Playing %d tracks" (length ids))))
+  (elfin--consume-future
+   (futur-let* ((ids <- (elfin--get-child-items parent-id)))
+     (if (null ids)
+         (message "No items found")
+       (elfin-clear-queue :silent)
+       (elfin-play-track (car ids) :silent)
+       (elfin-queue-tracks (cdr ids) :silent)
+       (message "Playing %d tracks" (length ids))))))
 
 (defun elfin-queue-collection (parent-id)
   "Add all tracks under PARENT-ID to the queue."
-  (elfin--get-child-items parent-id
-      (elfin-queue-tracks ids)))
+  (elfin--consume-future
+   (futur-let* ((ids <- (elfin--get-child-items parent-id)))
+     (if (null ids)
+         (message "No items found")
+       (elfin-queue-tracks ids)))))
 
 (defun elfin-stop ()
   "Stop Elfin playback."

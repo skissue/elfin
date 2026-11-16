@@ -8,6 +8,7 @@
 
 (require 'elfin-vars)
 (require 'plz)
+(require 'futur)
 
 (defconst elfin--client-name "elfin"
   "Client name sent to Jellyfin server.")
@@ -64,28 +65,61 @@ If TOKEN is provided, include it in the header."
     (when pairs
       (concat "?" (string-join pairs "&")))))
 
-(defmacro elfin--get (endpoint params &rest then)
-  "Make authenticated GET request to ENDPOINT, evaluating THEN on success.
-ENDPOINT is relative to the server URL. PARAMS is a plist of query
-parameters. Pass nil for no parameters. THEN is evaluated with the
-response data bound to `response'."
-  (declare (indent 2))
-  `(progn
-     (unless elfin--active-session
-       (error "No active Jellyfin session"))
-     (let* ((server (plist-get elfin--active-session :server))
-            (token (plist-get elfin--active-session :access-token))
-            (query-string (elfin--plist-to-query-string ,params))
-            (url (concat server ,endpoint query-string)))
-       (plz 'get url
-         :headers `(("Authorization" . ,(elfin--auth-header token)))
-         :as #'json-parse-buffer
-         :then (lambda (response)
-                 (elfin--api-log (format "GET %s -> %S" url response))
-                 ,@then)
-         :else (lambda (err)
-                 (elfin--api-log (format "GET %s -> ERROR %S" url err))
-                 (message "Request failed: %S" err))))))
+(defun elfin--json-future (method url headers &optional body)
+  "Return a future for parsed JSON from METHOD at URL using plz.
+HEADERS and BODY are passed to plz unchanged.  Transport, request setup,
+and JSON parsing errors reject the future.  Log results without reporting
+errors to the user; consumers own terminal error handling."
+  (futur-bind
+   (condition-case err
+       (futur-bind
+        (futur-new
+         (lambda (future)
+           (plz method url :headers headers :body body :as 'string
+             :then (lambda (text)
+                     (futur-deliver-value future text))
+             :else (lambda (err)
+                     (futur-deliver-failure future (list 'plz-error err))))))
+        #'json-parse-string)
+     (error (futur-failed err)))
+   (lambda (response)
+     (elfin--api-log (format "%s %s -> %S" (upcase (symbol-name method)) url response))
+     response)
+   (lambda (err)
+     (elfin--api-log (format "%s %s -> ERROR %S" (upcase (symbol-name method)) url
+                            (if (eq (car err) 'plz-error) (cadr err) err)))
+     (futur-failed err))))
+
+(defun elfin--get (endpoint &optional params)
+  "Return a future for authenticated JSON from ENDPOINT.
+ENDPOINT is relative to the server URL.  PARAMS is a plist of query
+parameters.  Without an active session, return a failed future."
+  (condition-case err
+      (if-let* ((session elfin--active-session))
+          (elfin--json-future
+           'get
+           (concat (plist-get session :server) endpoint
+                   (elfin--plist-to-query-string params))
+           `(("Authorization" . ,(elfin--auth-header
+                                  (plist-get session :access-token)))))
+        (futur-failed '(user-error "No active Jellyfin session")))
+    (error (futur-failed err))))
+
+(defun elfin--consume-future (future &optional error-context)
+  "Consume FUTURE, reporting failures once and ignoring cancellation.
+ERROR-CONTEXT, when non-nil, replaces the default failure message prefix.
+Use at command boundaries where no caller will handle a failed future.
+Return a future resolving to nil after the entire operation finishes."
+  (futur-bind future #'ignore
+              (lambda (err)
+                (unless (eq (car err) 'futur-aborted)
+                  (message "%s: %s"
+                           (or error-context
+                               (if (eq (car err) 'plz-error) "Request failed" "Elfin"))
+                           (if (eq (car err) 'plz-error)
+                               (format "%S" (cadr err))
+                             (error-message-string err))))
+                nil)))
 
 (defun elfin--audio-url (id)
   "Return the audio stream URL for item ID."
@@ -113,19 +147,14 @@ ON-ERROR is called with (id err) for each failure."
          :then (lambda (data) (funcall on-success id data))
          :else (lambda (err) (funcall on-error id err)))))))
 
-(defmacro elfin--get-child-items (parent-id &rest body)
-  "Fetch child item IDs under PARENT-ID and evaluate BODY.
-BODY is evaluated with `ids' bound to the list of item IDs.
-Shows a message if no items are found."
-  (declare (indent 2))
-  `(elfin--get "/Items" `(:parentId ,,parent-id
-                                    :includeItemTypes "Audio"
-                                    :Recursive t)
-     (let ((ids (seq-map (lambda (item) (gethash "Id" item))
-                         (gethash "Items" response))))
-       (if (null ids)
-           (message "No items found")
-         ,@body))))
+(defun elfin--get-child-items (parent-id)
+  "Return a future containing PARENT-ID's audio item IDs in server order.
+An empty collection resolves to nil."
+  (futur-let* ((response <- (elfin--get "/Items" `(:parentId ,parent-id
+                                                :includeItemTypes "Audio"
+                                                :Recursive t))))
+    (seq-map (lambda (item) (gethash "Id" item))
+             (gethash "Items" response))))
 
 (provide 'elfin-api)
 

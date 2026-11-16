@@ -3,7 +3,7 @@
 ;; Author: Ad <me@skissue.xyz>
 ;; Maintainer: Ad <me@skissue.xyz>
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "26.1") (plz "0.9.1"))
+;; Package-Requires: ((emacs "28.1") (plz "0.9.1") (futur "2.1"))
 ;; Homepage: https://github.com/skissue/elfin
 ;; Keywords: multimedia
 

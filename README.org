@@ -29,8 +29,9 @@ Work-in-progress! Many features are still missing/half-baked.
 This package is not yet in any repositories. Install it with your favorite from-Git method!
 
 ** Requirements
-- Emacs 26.1 or later
+- Emacs 28.1 or later
 - [[https://github.com/alphapapa/plz.el][plz.el]] (0.9.1+)
+- [[https://elpa.gnu.org/packages/futur.html][futur.el]] (2.1+)
 - [[https://mpv.io/][mpv]]
 - A [[https://jellyfin.org/][Jellyfin]] server
 
@@ -146,7 +147,7 @@ A global minor mode for scrobbling tracks to [[https://listenbrainz.org/][Listen
 #+end_src
 
 * Testing
-Run =just test= from the repository root. Requires Emacs and =plz=,
+Run =just test= from the repository root. Requires Emacs, =plz=, and =futur=,
 doesn't use a Jellyfin server or mpv.
 
 * Roadmap

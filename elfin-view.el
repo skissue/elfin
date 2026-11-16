@@ -212,9 +212,10 @@ When SEARCH-TERM is non-nil, filter results by that term."
                          (when search-term `(:searchTerm ,search-term))
                          `(:startIndex ,start-index
                                        :limit ,elfin-max-items-per-page))))
-    (elfin--get "/Items" params
-      (elfin--display-items (gethash "Items" response)
-                            type page parent-id search-term))))
+    (elfin--consume-future
+     (futur-let* ((response <- (elfin--get "/Items" params)))
+       (elfin--display-items (gethash "Items" response)
+                            type page parent-id search-term)))))
 
 ;;; Interactive commands
 
