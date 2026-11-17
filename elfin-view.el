@@ -7,6 +7,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'image)
 (require 'map)
 (require 'elfin-api)
 (require 'elfin-image)
@@ -85,38 +86,41 @@
 (defun elfin--image-column-spec ()
   "Specification for the image column for `tabulated-list-format'."
   (list " "
-        (ceiling (/ (float (car elfin-thumbnail-size))
-                    (frame-char-width)))
+        ;; Leave room for a stretch spacer after the two-character cell.
+        (max 3 (ceiling (/ (float (car elfin-thumbnail-size))
+                           (frame-char-width))))
         nil))
 
-(defun elfin--insert-thumbnail (buffer id path)
-  "Insert thumbnail at PATH for ID into BUFFER at placeholder."
-  (when (buffer-live-p buffer)
-    (with-current-buffer buffer
-      (with-silent-modifications
-        (save-excursion
-          (goto-char (point-min))
-          (when (search-forward (format "[[%s]]" id) nil t)
-            (delete-region (match-beginning 0) (match-end 0))
-            (insert-image (create-image path))))))))
+(defun elfin--thumbnail-cell (&optional path)
+  "Return a fixed-height cell, optionally displaying artwork at PATH.
+Fit and center the artwork within `elfin-thumbnail-size', preserving its
+aspect ratio and enlarging small images.  With no PATH, reserve a blank row."
+  (pcase-let ((`(,width . ,height) elfin-thumbnail-size))
+    (concat
+     (propertize " " 'display
+                 `(space :width (0) :height (,height) :ascent 50))
+     (when (and path (display-images-p))
+       (let* ((image (create-image path nil nil :scale 1 :ascent 50
+                                   :width width :max-height height))
+              (size (image-size image t)))
+         ;; Vertical margins alter the image's ascent.  The height spacer
+         ;; above instead centers images around a shared row baseline.
+         (setf (image-property image :margin)
+               (cons (/ (- width (car size)) 2) 0))
+         (propertize " " 'display image))))))
 
-(defun elfin--insert-blank-thumbnail (buffer id)
-  "Insert a blank thumbnail for ID into BUFFER at placeholder."
+(defun elfin--insert-thumbnail (buffer id path)
+  "Update ID's thumbnail in BUFFER from PATH, including its stored entry."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (with-silent-modifications
         (save-excursion
           (goto-char (point-min))
-          (when (search-forward (format "[[%s]]" id) nil t)
-            (delete-region (match-beginning 0) (match-end 0))
-            (insert
-             (propertize
-              " " 'display
-              `(space
-                :width ,(/ (float (car elfin-thumbnail-size))
-                           (frame-char-width))
-                :height ,(/ (float (cdr elfin-thumbnail-size))
-                            (frame-char-height)))))))))))
+          (while (and (not (eobp))
+                      (not (equal (tabulated-list-get-id) id)))
+            (forward-line 1))
+          (unless (eobp)
+            (tabulated-list-set-col 0 (elfin--thumbnail-cell path) t)))))))
 
 (defun elfin--format-duration (ticks)
   "Format TICKS (100-nanosecond units) as human-readable duration."
@@ -171,7 +175,7 @@
          (format-entry
           (lambda (item)
             (let ((id (gethash "Id" item)))
-              (list id (vconcat (list (format "[[%s]]" id))
+              (list id (vconcat (list (elfin--thumbnail-cell))
                                 (mapcar (lambda (fn) (funcall fn item))
                                         extractors))))))
          (buf-name (if search-term
@@ -196,8 +200,7 @@
                      (cdr elfin-thumbnail-size)
                      (lambda (path) (elfin--insert-thumbnail buf id path))
                      (lambda (_path err)
-                       (if (eq err 'no-image)
-                           (elfin--insert-blank-thumbnail buf id)
+                       (unless (eq err 'no-image)
                          (message "Error fetching thumbnail for %s: %S"
                                   id err)))))))
     (switch-to-buffer buf)))

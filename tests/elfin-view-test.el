@@ -57,14 +57,14 @@
         (should-not requests)))))
 
 (ert-deftest elfin-view-displays-each-type-and-missing-metadata ()
-  (dolist (case '((albums ["[[a]]" "Song" "Album artist" "1:01"]
-                          ["[[b]]" "Untitled" "Unknown" ""])
-                  (artists ["[[a]]" "Song" "3" "Jazz, Folk"]
-                           ["[[b]]" "Untitled" "0" ""])
-                  (tracks ["[[a]]" "Song" "First artist" "Record" "1:01"]
-                          ["[[b]]" "Untitled" "Unknown" "Unknown" ""])
-                  (playlists ["[[a]]" "Song" "3" "1:01"]
-                             ["[[b]]" "Untitled" "0" ""])))
+  (dolist (case '((albums [" " "Song" "Album artist" "1:01"]
+                          [" " "Untitled" "Unknown" ""])
+                  (artists [" " "Song" "3" "Jazz, Folk"]
+                           [" " "Untitled" "0" ""])
+                  (tracks [" " "Song" "First artist" "Record" "1:01"]
+                          [" " "Untitled" "Unknown" "Unknown" ""])
+                  (playlists [" " "Song" "3" "1:01"]
+                             [" " "Untitled" "0" ""])))
     (with-temp-buffer
       (let ((buffer (current-buffer)) (elfin-thumbnail-size '(80 . 45)) callbacks)
         (cl-letf (((symbol-function 'elfin-view-buffer-name) (lambda (_) (buffer-name buffer)))
@@ -84,14 +84,87 @@
           (should (string-match-p "Song" (buffer-string)))
           (should (string-match-p "Untitled" (buffer-string)))
           (should buffer-read-only)
-          ;; Late image errors update the correct row, even in reverse order.
+          ;; Missing artwork keeps the space reserved while loading.
           (dolist (callback callbacks) (funcall callback nil 'no-image))
           (should-not (string-match-p "\\[\\[" (buffer-string)))
           (let ((position (text-property-not-all (point-min) (point-max) 'display nil)))
             (should position)
             (should (equal (get-text-property position 'display)
-                           `(space :width ,(/ 80.0 (frame-char-width))
-                                   :height ,(/ 45.0 (frame-char-height)))))))))))
+                           '(space :width (0) :height (45) :ascent 50)))))))))
+
+(ert-deftest elfin-view-artwork-keeps-geometry-through-loading-and-sorting ()
+  (skip-unless (and (display-graphic-p) (image-type-available-p 'pbm)))
+  (let ((directory (make-temp-file "elfin-artwork-" t))
+        (elfin-thumbnail-size '(80 . 45))
+        ;; Portrait, landscape, and a small image that must be enlarged.
+        (cases '(("Portrait" 40 80 (23 . 45))
+                 ("Landscape" 80 40 (80 . 40))
+                 ("Tiny" 8 8 (45 . 45))
+                 ("Missing" nil nil nil)))
+        callbacks items)
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (with-temp-buffer
+            (let ((buffer (current-buffer)))
+              (cl-loop for (name width height _size) in cases for n from 1
+                       do (let ((item (make-hash-table :test #'equal)))
+                            (puthash "Id" (format "%032d" n) item)
+                            (puthash "Name" name item)
+                            (push item items))
+                       when width
+                       do (with-temp-file (expand-file-name name directory)
+                            (set-buffer-multibyte nil)
+                            (insert (format "P6\n%d %d\n255\n" width height)
+                                    (make-string (* width height 3) 80))))
+              (cl-letf (((symbol-function 'elfin-view-buffer-name)
+                         (lambda (_) (buffer-name buffer)))
+                        ((symbol-function 'elfin--ensure-image-file)
+                         (lambda (item _width _height ready error)
+                           (push (list (gethash "Name" item) ready error) callbacks))))
+                (elfin--display-items (vconcat (nreverse items)) 'albums 1 nil nil))
+              ;; Sort before downloads finish, then reprint after they finish.
+              (setq tabulated-list-sort-key '("Name" . nil))
+              (tabulated-list-print t)
+              (dolist (stage '(loading loaded reprinted))
+                (when (eq stage 'loaded)
+                  (dolist (callback callbacks)
+                    (if (equal (car callback) "Missing")
+                        (funcall (nth 2 callback) nil 'no-image)
+                      (funcall (nth 1 callback)
+                               (expand-file-name (car callback) directory)))))
+                (when (eq stage 'reprinted) (tabulated-list-print t))
+                (goto-char (point-min))
+                (redisplay t)
+                (let (name-x)
+                  (dotimes (row 4)
+                    (let* ((entry (tabulated-list-get-entry))
+                           (name (aref entry 1))
+                           (expected (nth 3 (assoc name cases)))
+                           (name-pos (save-excursion
+                                       (search-forward name (line-end-position))
+                                       (match-beginning 0)))
+                           (x (car (posn-x-y (posn-at-point name-pos))))
+                           (p (line-beginning-position)) image)
+                      (should (= (car (window-line-height row)) 45))
+                      (if name-x (should (= x name-x)) (setq name-x x))
+                      (while (< p name-pos)
+                        (let ((display (get-text-property p 'display)))
+                          (when (eq (car-safe display) 'image) (setq image display)))
+                        (setq p (next-single-property-change p 'display nil name-pos)))
+                      (if (or (eq stage 'loading) (null expected))
+                          (should-not image)
+                        (should image)
+                        ;; `image-size' includes margins.  Check the artwork's
+                        ;; fitted size and its horizontally centered outer box.
+                        (let* ((size (image-size image t))
+                               (margin (image-property image :margin)))
+                          (should (equal (cons (- (car size) (* 2 (car margin)))
+                                               (cdr size))
+                                         expected))
+                          (should (<= (abs (- (car size) 80)) 1)))))
+                    (forward-line 1)))))))
+      (delete-directory directory t))))
 
 (ert-deftest elfin-view-fetch-response-populates-search-buffer ()
   (elfin-test-with-http
@@ -141,7 +214,6 @@
 (ert-deftest elfin-view-late-thumbnail-callback-tolerates-killed-buffer ()
   (let ((buffer (generate-new-buffer " *elfin-dead-view*")))
     (kill-buffer buffer)
-    (should-not (elfin--insert-blank-thumbnail buffer "a"))
     (should-not (elfin--insert-thumbnail buffer "a" "/unused/image.jpg"))))
 
 ;;; elfin-view-test.el ends here
