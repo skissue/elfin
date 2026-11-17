@@ -34,6 +34,13 @@
 (cl-defgeneric elfin-view-params (type)
   "Return API query parameter plist for view TYPE.")
 
+(cl-defgeneric elfin-view-fetch (type page parent-id search-term)
+  "Return a future for view TYPE's item response on PAGE.
+PARENT-ID and SEARCH-TERM optionally restrict the results.")
+
+(cl-defgeneric elfin-view-search (type parent-id &optional term)
+  "Search view TYPE under PARENT-ID for TERM, prompting when omitted.")
+
 (cl-defgeneric elfin-view-buffer-name (type)
   "Return buffer name string for view TYPE.")
 
@@ -45,6 +52,17 @@
 
 (cl-defgeneric elfin-view-play (type id)
   "Play item ID in view TYPE, overriding the current queue.")
+
+(cl-defmethod elfin-view-fetch (type page parent-id search-term)
+  (elfin--get "/Items"
+              (append (elfin-view-params type)
+                      (when parent-id `(:parentId ,parent-id))
+                      (when search-term `(:searchTerm ,search-term))
+                      `(:startIndex ,(* (1- page) elfin-max-items-per-page)
+                                    :limit ,elfin-max-items-per-page))))
+
+(cl-defmethod elfin-view-search (type parent-id &optional term)
+  (elfin--show-view type 1 parent-id (or term (read-string "Search: "))))
 
 ;;; View type definitions
 
@@ -76,9 +94,25 @@
 (cl-defmethod elfin-view-fields ((_type (eql playlists))) '(name count duration))
 (cl-defmethod elfin-view-params ((_type (eql playlists))) '(:includeItemTypes "Playlist" :Recursive t))
 (cl-defmethod elfin-view-buffer-name ((_type (eql playlists))) "*Elfin Playlists*")
-(cl-defmethod elfin-view-open ((_type (eql playlists)) id) (elfin--show-view 'tracks nil id))
+(cl-defmethod elfin-view-open ((_type (eql playlists)) id) (elfin--show-view 'playlist-tracks nil id))
 (cl-defmethod elfin-view-queue ((_type (eql playlists)) id) (elfin-queue-collection id))
 (cl-defmethod elfin-view-play ((_type (eql playlists)) id) (elfin-play-collection id))
+
+;; playlist tracks
+(cl-defmethod elfin-view-fields ((_type (eql playlist-tracks))) (elfin-view-fields 'tracks))
+(cl-defmethod elfin-view-buffer-name ((_type (eql playlist-tracks))) (elfin-view-buffer-name 'tracks))
+(cl-defmethod elfin-view-open ((_type (eql playlist-tracks)) id) (elfin-view-open 'tracks id))
+(cl-defmethod elfin-view-queue ((_type (eql playlist-tracks)) id) (elfin-view-queue 'tracks id))
+(cl-defmethod elfin-view-play ((_type (eql playlist-tracks)) id) (elfin-view-play 'tracks id))
+
+;; The generic /Items endpoint sorts playlists incorrectly
+(cl-defmethod elfin-view-fetch ((_type (eql playlist-tracks)) page parent-id _search-term)
+  (elfin--get (format "/Playlists/%s/Items" parent-id)
+              `(:startIndex ,(* (1- page) elfin-max-items-per-page)
+                            :limit ,elfin-max-items-per-page)))
+
+(cl-defmethod elfin-view-search ((_type (eql playlist-tracks)) _parent-id &optional _term)
+  (user-error "Search is unavailable inside playlists"))
 
 ;;; Display helpers
 
@@ -205,15 +239,9 @@
 (defun elfin--show-view (type &optional page parent-id search-term)
   "Fetch and display view TYPE at PAGE, optionally filtered by PARENT-ID.
 When SEARCH-TERM is non-nil, filter results by that term."
-  (let* ((page (or page 1))
-         (start-index (* (1- page) elfin-max-items-per-page))
-         (params (append (elfin-view-params type)
-                         (when parent-id `(:parentId ,parent-id))
-                         (when search-term `(:searchTerm ,search-term))
-                         `(:startIndex ,start-index
-                                       :limit ,elfin-max-items-per-page))))
+  (let ((page (or page 1)))
     (elfin--consume-future
-     (futur-let* ((response <- (elfin--get "/Items" params)))
+     (futur-let* ((response <- (elfin-view-fetch type page parent-id search-term)))
        (elfin--display-items (gethash "Items" response)
                             type page parent-id search-term)))))
 
@@ -246,10 +274,10 @@ When SEARCH-TERM is non-nil, filter results by that term."
   (interactive)
   (elfin-view-play elfin--view-type (tabulated-list-get-id)))
 
-(defun elfin-items-search (term)
-  "Search the current view for TERM."
-  (interactive "sSearch: ")
-  (elfin--show-view elfin--view-type 1 elfin--view-parent-id term))
+(defun elfin-items-search (&optional term)
+  "Search the current view for TERM, prompting when omitted."
+  (interactive)
+  (elfin-view-search elfin--view-type elfin--view-parent-id term))
 
 (defun elfin-items-clear-search ()
   "Clear the search and return to the unfiltered view."
