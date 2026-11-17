@@ -153,6 +153,7 @@
   (let* ((directory (make-temp-file "elfin-mpv-" t))
          (elfin--mpv-socket (expand-file-name "socket" directory))
          (elfin--mpv-process nil)
+         (existing-buffer (get-buffer "*Elfin mpv*"))
          spawned deleted)
     (unwind-protect
         (cl-letf (((symbol-function 'make-process)
@@ -161,8 +162,7 @@
                      (write-region "" nil elfin--mpv-socket nil 'silent)
                      'fake-mpv))
                   ((symbol-function 'process-live-p) (lambda (p) (eq p 'fake-mpv)))
-                  ((symbol-function 'delete-process) (lambda (p) (push p deleted)))
-                  ((symbol-function 'get-buffer-create) (lambda (&rest _) nil)))
+                  ((symbol-function 'delete-process) (lambda (p) (push p deleted))))
           (elfin--ensure-mpv)
           (elfin--ensure-mpv)
           (should (= (length spawned) 1))
@@ -171,18 +171,22 @@
           (should (equal deleted '(fake-mpv)))
           (should-not elfin--mpv-process)
           (should-not (file-exists-p elfin--mpv-socket)))
+      (when (and (not existing-buffer) (get-buffer "*Elfin mpv*"))
+        (kill-buffer "*Elfin mpv*"))
       (delete-directory directory t))))
 
 (ert-deftest elfin-mpv-start-timeout-signals-error ()
   (let* ((directory (make-temp-file "elfin-mpv-" t))
          (elfin--mpv-process nil)
+         (existing-buffer (get-buffer "*Elfin mpv*"))
          (elfin--mpv-socket (expand-file-name "never-created" directory)))
     (unwind-protect
         (cl-letf (((symbol-function 'make-process) (lambda (&rest _) 'fake-mpv))
-                  ((symbol-function 'get-buffer-create) (lambda (&rest _) nil))
                   ((symbol-function 'sleep-for) #'ignore))
           (should (equal (should-error (elfin--ensure-mpv))
                          '(error "Failed to start mpv"))))
+      (when (and (not existing-buffer) (get-buffer "*Elfin mpv*"))
+        (kill-buffer "*Elfin mpv*"))
       (delete-directory directory t))))
 
 ;;; elfin-mpv-test.el ends here
