@@ -46,48 +46,71 @@
           (elfin--ipc-filter nil (format "{\"request_id\":%d,\"data\":99}\n" volume-id)))
         (should (= (length results) 2))))))
 
-(ert-deftest elfin-mpv-ipc-fragments-and-malformed-lines ()
+(ert-deftest elfin-mpv-ipc-fragments-warn-and-continue-after-errors ()
   ;; Every split point must produce the same events, exactly once.  Include
-  ;; malformed data, an unknown observer, and multiple values in one chunk.
+  ;; malformed data, a failing callback, and an unknown observer.
   (let ((wire (concat "not json\n"
                       "{\"event\":\"property-change\",\"id\":7,\"data\":false}\n"
+                      "[]\n"
                       "{\"event\":\"property-change\",\"id\":99,\"data\":9}\n"
                       "{\"event\":\"property-change\",\"id\":7,\"data\":true}\n"
+                      "{\"request_id\":8,\"data\":1}\n"
                       "{\"event\":\"property-change\",\"id\":7,\"data\":null}\n"
                       "{\"event\":\"idle\"}\n")))
     (dotimes (split (1+ (length wire)))
       (let* ((elfin--ipc-buffer "")
              (elfin-debug nil)
+             (elfin--response-handlers
+              (list (cons 8 (lambda (_) (error "Broken callback")))))
              (elfin--property-observers '((7 . "pause")))
-             values events
+             values events warnings
              (elfin--property-callbacks
               (list (list "pause" (lambda (value) (push value values)))))
              (elfin--event-callbacks
               (list (list "idle" (lambda (event) (push (gethash "event" event) events))))))
-        (elfin--ipc-filter nil (substring wire 0 split))
-        (elfin--ipc-filter nil (substring wire split))
-        (should (equal (reverse values) '(nil t nil)))
-        (should (equal events '("idle")))
-        (elfin--ipc-filter nil "{\"event\":\"idle\"}\n")
-        (should (equal events '("idle" "idle")))))))
+        (cl-letf (((symbol-function 'warn)
+                   (lambda (format-string &rest args)
+                     (push (apply #'format format-string args) warnings))))
+          (elfin--ipc-filter nil (substring wire 0 split))
+          (elfin--ipc-filter nil (substring wire split))
+          (should (equal (reverse values) '(nil t nil)))
+          (should (equal events '("idle")))
+          (should (= (length warnings) 3))
+          (should (seq-some (lambda (warning) (string-match-p "Broken callback" warning)) warnings))
+          (should-not elfin--response-handlers)
+          (elfin--ipc-filter nil "{\"event\":\"idle\"}\n")
+          (should (equal events '("idle" "idle"))))))))
 
-(ert-deftest elfin-mpv-response-and-position-are-ready-before-start-event ()
-  (elfin-test-with-player
-    (let* ((elfin--ipc-buffer "")
-           (elfin-debug nil)
-           (elfin--response-handlers
-            (list (cons 8 (lambda (data) (puthash data "track-b" elfin--entry-map)))))
-           (elfin--property-observers '((4 . "playlist-playing-pos")))
-           (elfin--property-callbacks '(("playlist-playing-pos" elfin--handle-playlist-pos)))
-           (elfin--event-callbacks '(("start-file" elfin--handle-start-file)))
-           observed
-           (elfin-file-start-hook
-            (list (lambda (id) (push (list id elfin--queue-pos) observed)))))
-      (elfin--ipc-filter
-       nil (concat "{\"event\":\"start-file\",\"playlist_entry_id\":42}\n"
-                   "{\"event\":\"property-change\",\"id\":4,\"data\":2}\n"
-                   "{\"request_id\":8,\"data\":42}\n"))
-      (should (equal observed '(("track-b" 2)))))))
+(ert-deftest elfin-mpv-dispatches-in-wire-order-at-every-split ()
+  ;; Synchronous loadfile replies precede their events.  Property notifications
+  ;; can lag behind start-file and must not be moved ahead of it.
+  (let ((wire (concat "{\"request_id\":8,\"data\":{\"playlist_entry_id\":42}}\n"
+                      "{\"event\":\"start-file\",\"playlist_entry_id\":42}\n"
+                      "{\"event\":\"property-change\",\"id\":4,\"data\":2}\n"
+                      "{\"event\":\"end-file\",\"playlist_entry_id\":42,\"reason\":\"eof\"}\n")))
+    (dotimes (split (1+ (length wire)))
+      (elfin-test-with-http
+        (elfin-test-with-player
+          (elfin-play-track "track-b" t)
+          (let* ((elfin--ipc-buffer "")
+                 (elfin--response-handlers
+                  (list (cons 8 (cdr (seq-find (lambda (command)
+                                                (equal (caar command) "loadfile"))
+                                              commands)))))
+                 (elfin--property-observers '((4 . "playlist-playing-pos")))
+                 (elfin--property-callbacks '(("playlist-playing-pos" elfin--handle-playlist-pos)))
+                 (elfin--event-callbacks '(("start-file" elfin--handle-start-file)
+                                           ("end-file" elfin--handle-end-file)))
+                 observed
+                 (elfin-file-start-hook
+                  (list (lambda (id) (push (list 'start id elfin--queue-pos) observed))))
+                 (elfin-file-end-hook
+                  (list (lambda (id reason) (push (list 'end id reason elfin--queue-pos) observed)))))
+            (elfin--ipc-filter nil (substring wire 0 split))
+            (elfin--ipc-filter nil (substring wire split))
+            (should (equal (reverse observed)
+                           '((start "track-b" 0) (end "track-b" "eof" 2))))
+            (should-not elfin--response-handlers)))))))
 
 (ert-deftest elfin-mpv-observers-share-registration-and-unsubscribe-last ()
   (elfin-test-with-player
@@ -128,9 +151,12 @@
         (elfin--ipc-buffer "old partial response")
         (elfin--response-handlers '((99 . ignore)))
         (elfin--request-counter 99)
+        (elfin--entry-map (make-hash-table :test 'eql))
+        (elfin-current-track-id "still-playing")
         (elfin--property-observers '((3 . "pause") (4 . "volume")))
         (elfin-debug nil)
         connections sent)
+    (puthash 9 "still-playing" elfin--entry-map)
     (cl-letf (((symbol-function 'elfin--ensure-mpv) #'ignore)
               ((symbol-function 'process-live-p) (lambda (p) (eq p 'fake-ipc)))
               ((symbol-function 'make-network-process)
@@ -140,6 +166,8 @@
       (elfin--ensure-ipc)
       (should (equal elfin--ipc-buffer ""))
       (should-not elfin--response-handlers)
+      (should (equal (gethash 9 elfin--entry-map) "still-playing"))
+      (should (equal elfin-current-track-id "still-playing"))
       (should (equal (reverse sent) '(["observe_property" 3 "pause"]
                                      ["observe_property" 4 "volume"])))
       (elfin--ensure-ipc)
@@ -153,22 +181,34 @@
   (let* ((directory (make-temp-file "elfin-mpv-" t))
          (elfin--mpv-socket (expand-file-name "socket" directory))
          (elfin--mpv-process nil)
+         (elfin--ipc-process 'fake-ipc)
+         (elfin--entry-map (make-hash-table :test 'eql))
+         (elfin--current-entry-id 9)
+         (elfin-current-track-id "previous-player")
          (existing-buffer (get-buffer "*Elfin mpv*"))
          spawned deleted)
+    (puthash 9 "previous-player" elfin--entry-map)
     (unwind-protect
         (cl-letf (((symbol-function 'make-process)
                    (lambda (&rest options)
                      (push options spawned)
                      (write-region "" nil elfin--mpv-socket nil 'silent)
                      'fake-mpv))
-                  ((symbol-function 'process-live-p) (lambda (p) (eq p 'fake-mpv)))
+                  ((symbol-function 'process-live-p) (lambda (p) (memq p '(fake-mpv fake-ipc))))
                   ((symbol-function 'delete-process) (lambda (p) (push p deleted))))
           (elfin--ensure-mpv)
+          (should (= (hash-table-count elfin--entry-map) 0))
+          (should-not elfin--current-entry-id)
+          (should-not elfin-current-track-id)
+          (puthash 9 "this-player" elfin--entry-map)
           (elfin--ensure-mpv)
+          (should (equal (gethash 9 elfin--entry-map) "this-player"))
           (should (= (length spawned) 1))
           (should (equal (car (plist-get (car spawned) :command)) "mpv"))
           (elfin-kill)
-          (should (equal deleted '(fake-mpv)))
+          (should (memq 'fake-mpv deleted))
+          (should (memq 'fake-ipc deleted))
+          (should-not elfin--ipc-process)
           (should-not elfin--mpv-process)
           (should-not (file-exists-p elfin--mpv-socket)))
       (when (and (not existing-buffer) (get-buffer "*Elfin mpv*"))

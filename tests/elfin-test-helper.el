@@ -37,6 +37,7 @@ Callbacks remain pending until the test explicitly delivers a response."
   `(let ((elfin--queue nil)
          (elfin--queue-pos nil)
          (elfin-current-track-id nil)
+         (elfin--current-entry-id nil)
          (elfin--entry-map (make-hash-table :test #'eql))
          (elfin-file-start-hook nil)
          (elfin-file-end-hook nil)

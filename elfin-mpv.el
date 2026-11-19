@@ -15,6 +15,9 @@
 (defvar elfin--mpv-process nil
   "Current mpv process for audio playback.")
 
+(defvar elfin--mpv-start-hook nil
+  "Hook run when a new mpv process starts, before connecting IPC.")
+
 (defvar elfin--property-observers nil
   "Alist mapping observer IDs to property names ((ID . property) ...).")
 
@@ -57,52 +60,41 @@
 
 (defun elfin--handle-command-response (json)
   "Dispatch JSON command response to its registered handler, if any.
-Handlers are one-shot and removed after being called."
+Handlers are one-shot."
   (let ((request-id (gethash "request_id" json 0)))
     (unless (zerop request-id)
       (if-let* ((entry (assq request-id elfin--response-handlers)))
           (progn
-            (funcall (cdr entry) (elfin--normalize-value (gethash "data" json)))
             (setq elfin--response-handlers
-                  (assq-delete-all request-id elfin--response-handlers)))
+                  (assq-delete-all request-id elfin--response-handlers))
+            (funcall (cdr entry) (elfin--normalize-value (gethash "data" json))))
         (warn "elfin: unexpected response for request_id %d" request-id)))))
 
 (defun elfin--ipc-filter (_proc output)
   "Process OUTPUT from mpv IPC, parsing JSON lines and dispatching events."
   (elfin--ipc-log "IN" output)
   (setq elfin--ipc-buffer (concat elfin--ipc-buffer output))
-  (let ((lines (split-string elfin--ipc-buffer "\n" t)))
-    (if (string-suffix-p "\n" output)
-        (setq elfin--ipc-buffer "")
-      (setq elfin--ipc-buffer (car (last lines)))
-      (setq lines (butlast lines)))
-    (let (property-changes events)
-      (cl-loop for line in lines
-               for json = (ignore-errors (json-parse-string line))
-               when json do
-               (let ((event-name (gethash "event" json)))
+  (cl-loop for end = (string-search "\n" elfin--ipc-buffer)
+           while end
+           for line = (substring elfin--ipc-buffer 0 end)
+           do (setq elfin--ipc-buffer (substring elfin--ipc-buffer (1+ end)))
+           (condition-case err
+               (let* ((json (json-parse-string line))
+                      (event-name (gethash "event" json)))
                  (cond
                   ((not event-name)
                    (elfin--handle-command-response json))
                   ((string= event-name "property-change")
-                   (push json property-changes))
+                   (when-let* ((id (gethash "id" json))
+                               (entry (assq id elfin--property-observers))
+                               (callbacks (assoc (cdr entry) elfin--property-callbacks)))
+                     (let ((value (elfin--normalize-value (gethash "data" json))))
+                       (dolist (fn (cdr callbacks))
+                         (funcall fn value)))))
                   (t
-                   (push json events)))))
-      (cl-loop for change in (nreverse property-changes)
-               for id = (gethash "id" change)
-               for entry = (and id (assq id elfin--property-observers))
-               for property = (and entry (cdr entry))
-               for cb-entry = (and property (assoc property elfin--property-callbacks))
-               when cb-entry do
-               (let ((value (elfin--normalize-value (gethash "data" change))))
-                 (dolist (fn (cdr cb-entry))
-                   (funcall fn value))))
-      (cl-loop for event in (nreverse events)
-               for event-name = (gethash "event" event)
-               for cb-entry = (assoc event-name elfin--event-callbacks)
-               when cb-entry do
-               (dolist (fn (cdr cb-entry))
-                 (funcall fn event))))))
+                   (dolist (fn (cdr (assoc event-name elfin--event-callbacks)))
+                     (funcall fn json)))))
+             (error (warn "elfin: IPC message failed: %s" (error-message-string err))))))
 
 (defun elfin--reregister-observers ()
   "Re-register all property observers after reconnect."
@@ -132,6 +124,7 @@ Return non-nil if there was an error."
                         :command (elfin--mpv-command)
                         :sentinel (lambda (_proc event)
                                     (message "mpv: %s" (string-trim event)))))
+    (run-hooks 'elfin--mpv-start-hook)
     (let ((tries 50))
       (while (and (> tries 0)
                   (not (file-exists-p elfin--mpv-socket)))
@@ -145,6 +138,8 @@ Return non-nil if there was an error."
 When HANDLER is non-nil, register it as a one-shot callback that
 receives the normalized data field of the response."
   (elfin--ensure-ipc)
+  ;; Synchronous IPC replies precede events in mpv 0.40; inline handlers
+  ;; install entry mappings before start-file.
   (let* ((request-id (when handler (cl-incf elfin--request-counter)))
          (msg `(:command ,(apply #'vector args)
                          ,@(when request-id `(:request_id ,request-id))))
@@ -212,6 +207,10 @@ FN receives the full event hash table as its single argument."
   (interactive)
   (when (and elfin--mpv-process
              (process-live-p elfin--mpv-process))
+    ;; Close IPC first to prevent commands during shutdown.
+    (when (and elfin--ipc-process (process-live-p elfin--ipc-process))
+      (delete-process elfin--ipc-process))
+    (setq elfin--ipc-process nil)
     (delete-process elfin--mpv-process)
     (setq elfin--mpv-process nil)
     (when (file-exists-p elfin--mpv-socket)

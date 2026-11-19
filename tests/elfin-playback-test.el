@@ -26,7 +26,12 @@
       (should (assoc '("set_property" "pause" :false) commands))
       (elfin-play-track "replacement" t)
       (should (equal elfin--queue '("replacement")))
-      (should (= (hash-table-count elfin--entry-map) 0)))))
+      ;; Replacing the playlist must not lose the outgoing file's identity.
+      (let* (ended
+             (elfin-file-end-hook (list (lambda (id _reason) (setq ended id)))))
+        (elfin--handle-end-file
+         (json-parse-string "{\"playlist_entry_id\":12,\"reason\":\"stop\"}"))
+        (should (equal ended "z"))))))
 
 (ert-deftest elfin-playback-collections-replace-or-append-after-response ()
   (elfin-test-with-http
@@ -52,7 +57,11 @@
       (funcall command)
       (should (= (elfin-queue-length) 0))
       (should-not elfin--queue-pos)
-      (should (= (hash-table-count elfin--entry-map) 0))
+      (let* (ended
+             (elfin-file-end-hook (list (lambda (id _reason) (setq ended id)))))
+        (elfin--handle-end-file
+         (json-parse-string "{\"playlist_entry_id\":9,\"reason\":\"stop\"}"))
+        (should (equal ended "b")))
       (if (eq command 'elfin-stop)
           (should (assoc '("stop") commands))
         (should (assoc '("playlist-clear") commands))
@@ -100,24 +109,51 @@
            (elfin-file-start-hook (list (lambda (id) (push id starts))))
            (elfin-file-end-hook (list (lambda (id reason) (push (list id reason) ends))))
            (elfin-pause-hook (list (lambda (paused) (push paused pauses))))
-           (elfin-idle-hook (list (lambda () (setq idle t)))))
+           (elfin-idle-hook
+            (list (lambda () (setq idle (list elfin--current-entry-id elfin-current-track-id))))))
       (puthash 17 "track-a" elfin--entry-map)
       (puthash 18 "track-b" elfin--entry-map)
       (elfin--ipc-filter nil "{\"event\":\"start-file\",\"playlist_entry_id\":17}\n")
       (should (equal elfin-current-track-id "track-a"))
       (elfin--ipc-filter nil "{\"event\":\"playback-restart\"}\n")
       (should (equal starts '("track-a" "track-a")))
-      ;; An explicit entry takes precedence over the current track.
+      ;; An end for another entry must not clear the current track.
       (elfin--ipc-filter nil "{\"event\":\"end-file\",\"playlist_entry_id\":18,\"reason\":\"eof\"}\n")
       (should (equal ends '(("track-b" "eof"))))
+      (should (equal elfin-current-track-id "track-a"))
+      ;; Different entries can refer to the same Jellyfin track.
+      (puthash 19 "track-a" elfin--entry-map)
+      (elfin--ipc-filter nil "{\"event\":\"end-file\",\"playlist_entry_id\":19,\"reason\":\"stop\"}\n")
+      (should (equal elfin-current-track-id "track-a"))
+      (elfin--ipc-filter nil "{\"event\":\"end-file\",\"playlist_entry_id\":17,\"reason\":\"eof\"}\n")
       (should-not elfin-current-track-id)
+      ;; The same entry can start again when the playlist loops.
       (elfin--ipc-filter nil "{\"event\":\"start-file\",\"playlist_entry_id\":17}\n")
-      (elfin--ipc-filter nil "{\"event\":\"end-file\",\"reason\":\"stop\"}\n")
-      (should (equal (car ends) '("track-a" "stop")))
+      (should (equal (car starts) "track-a"))
+      ;; Unknown or missing entry IDs cannot be attributed to track-a.
+      (let (warnings)
+        (cl-letf (((symbol-function 'warn) (lambda (&rest args) (push args warnings))))
+          (elfin--ipc-filter nil "{\"event\":\"end-file\",\"playlist_entry_id\":99,\"reason\":\"stop\"}\n")
+          (elfin--ipc-filter nil "{\"event\":\"end-file\",\"reason\":\"stop\"}\n")
+          (should (equal elfin-current-track-id "track-a"))
+          (should (equal ends '(("track-a" "eof") ("track-a" "stop") ("track-b" "eof"))))
+          (elfin--ipc-filter nil "{\"event\":\"start-file\",\"playlist_entry_id\":99}\n")
+          (should-not elfin-current-track-id)
+          (elfin--ipc-filter nil "{\"event\":\"playback-restart\"}\n")
+          (should (equal starts '("track-a" "track-a" "track-a")))
+          (should (= (length warnings) 3))))
+      ;; Idle clears stale identity even if the matching end event was missed.
+      (elfin--ipc-filter nil "{\"event\":\"start-file\",\"playlist_entry_id\":17}\n")
       (elfin--ipc-filter nil (concat "{\"event\":\"property-change\",\"id\":1,\"data\":true}\n"
                                     "{\"event\":\"property-change\",\"id\":1,\"data\":false}\n"
                                     "{\"event\":\"idle\"}\n"))
       (should (equal (reverse pauses) '(t nil)))
-      (should idle))))
+      (should (equal idle '(nil nil)))
+      (should-not elfin--current-entry-id)
+      (should-not elfin-current-track-id)
+      ;; Idle does not discard mappings for subsequent playback.
+      (elfin--ipc-filter nil "{\"event\":\"start-file\",\"playlist_entry_id\":18}\n")
+      (should (equal elfin-current-track-id "track-b"))
+      (should (equal (car starts) "track-b")))))
 
 ;;; elfin-playback-test.el ends here
